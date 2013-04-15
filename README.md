@@ -313,6 +313,28 @@ body iolist. This would allow for something like this:
 ["<html>Loading: ", {fun stream/1, Db}, "</html>"]
 ```
 
+It's tempting to also support a zero-arg function:
+
+``` erlang
+app(Env) ->
+    {{200, "OK"}, [{"Content-Type", "text/plain"}], fun stream/0}.
+
+stream() ->
+    case db_service:lookup("data") of
+        {ok, Data} ->
+            {continue, Data};
+        error ->
+            stop
+    end.
+```
+
+This makes sense for service-oriented interfaces that manage data lifecycle
+independently of the request handler.
+
+BUT - in the spirit of KISS and simplifying servers/middleware development, we
+should limit it to a single arg. The case where an app doesn't care about iter
+state, it can pass along an empty list or an unused variable like `State`.
+
 ### SSL
 
 Abstract the socket implementation to support SSL as well as TCP. This will
@@ -339,3 +361,40 @@ E.g. a path like this:
 would be parsed like this:
 
     {"/foo/bar", "baz=bam", [{"baz", "bam"}]}
+
+### Explicit Chunking
+
+From PEP 333:
+
+> And, if the server and client both support HTTP/1.1 "chunked encoding" [3],
+> then the server may use chunked encoding to send a chunk for each write()
+> call or string yielded by the iterable, thus generating a Content-Length
+> header for each chunk.
+
+In Psycho, that would suggest that response:
+
+    {{200, "OK"}, [], ["Hello, my name is ", Name, "!"]}
+
+would be chunked in three parts! Of course we can't have this -- it breaks
+iolists and forces apps to do absurd things like this:
+
+    {{200, "OK"}, [], "Hello, my name is " ++ Name ++ "!"}
+
+No!
+
+But we need a way to get explicit chunking. I think maybe something like this:
+
+    {{200, "OK"}, [], {chunks, [["Hello, my name is ", Name, "!"]]}}
+
+Notes:
+
+- The body response itself must be tagged with `chunks` -- elements within the
+  chunks list cannot be further tagged
+- Only elements in the chunks list will be chunked -- i.e. there's no deep list
+  chunking
+- Each element in the list will be evaluated separately in memory to build a
+  complete chunk (perhaps up to some server configurable limit?)
+
+The equivalent of WSGI's "iter" pattern in Psycho would look like this:
+
+    {{200, "OK"}, [], {chunks, {fun iter/1, []}}}
