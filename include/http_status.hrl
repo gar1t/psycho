@@ -1,0 +1,44 @@
+-define(status_continue, {100, "Continue"}).
+-define(status_switching_protocols, {101, "Switching Protocols"}).
+-define(status_ok, {200, "OK"}).
+-define(status_created, {201, "Created"}).
+-define(status_accepted, {202, "Accepted"}).
+-define(status_non_authoritative_information,
+        {203, "Non-Authoritative Information"}).
+-define(status_no_content, {204, "No Content"}).
+-define(status_reset_content, {205, "Reset Content"}).
+-define(status_partial_content, {206, "Partial Content"}).
+-define(status_multiple_choices, {300, "Multiple Choices"}).
+-define(status_moved_permanentaly, {301, "Moved Permanently"}).
+-define(status_found, {302, "Found"}).
+-define(status_see_other, {303, "See Other"}).
+-define(status_not_modified, {304, "Not Modified"}).
+-define(status_use_proxy, {305, "Use Proxy"}).
+-define(status_temporary_redirect, {307, "Temporary Redirect"}).
+-define(status_bad_request, {400, "Bad Request"}).
+-define(status_unauthorized, {401, "Unauthorized"}).
+-define(status_payment_required, {402, "Payment Required"}).
+-define(status_forbidden, {403, "Forbidden"}).
+-define(status_not_found, {404, "Not Found"}).
+-define(status_method_not_allowed, {405, "Method Not Allowed"}).
+-define(status_not_acceptable, {406, "Not Acceptable"}).
+-define(status_proxy_authentication_required,
+        {407, "Proxy Authentication Required"}).
+-define(status_request_timeout, {408, "Request Time-out"}).
+-define(status_conflict, {409, "Conflict"}).
+-define(status_gone, {410, "Gone"}).
+-define(status_length_required, {411, "Length Required"}).
+-define(status_precondition_failed, {412, "Precondition Failed"}).
+-define(status_request_entity_too_large, {413, "Request Entity Too Large"}).
+-define(status_request_url_too_large, {414, "Request-URI Too Large"}).
+-define(status_unsupported_media_type, {415, "Unsupported Media Type"}).
+-define(status_request_range_not_satisfiable,
+        {416, "Request range not satisfiable"}).
+-define(status_expectation_failed, {417, "Expectation Failed"}).
+-define(status_internal_server_error, {500, "Internal Server Error"}).
+-define(status_not_implemented, {501, "Not Implemented"}).
+-define(status_bad_gateway, {502, "Bad Gateway"}).
+-define(status_service_unavailable, {503, "Service Unavailable"}).
+-define(status_gateway_timeout, {504, "Gateway Time-out"}).
+-define(status_http_version_not_supported,
+        {505, "HTTP Version not supported"}).
