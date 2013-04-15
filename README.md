@@ -4,14 +4,14 @@ Yes, another Erlang web server!
 
 ## Technical Goals
 
-- Small, focussed
+- Small, focused
 - Bug free
 - Reasonable performance
 - Trivial to embed
 - Support ecosystem of plugins/middleware
 - No external dependencies
 
-I'm not happy with the state of "small and focussed" in HTTP Erlang land. I'd
+I'm not happy with the state of "small and focused" in HTTP Erlang land. I'd
 like something similar to Mochiweb that uses a more canonical interface.
 
 This is also an experiment to create a useful HTTP middleware interface in
@@ -39,7 +39,7 @@ minimally viable proc_lib wrapper. See what happens!
 
 - One stop shopping
 
-In the interest of small-and-focussed plus ecosystem, this project will remain
+In the interest of small-and-focused plus ecosystem, this project will remain
 only a web server -- in the spirit of Mochiweb and the CherryPy HTTP
 server. Other features should come by way of separate projects. The idea is
 that Psycho provides a drop-dead simple interface and makes adding new
@@ -55,7 +55,7 @@ with the server or via a protocol violation.
 
 ## Supported Ecosystem Features
 
-Psycho will provide a bare bones HTTP server with perhaps some basic suppor for
+Psycho will provide a bare bones HTTP server with perhaps some basic support for
 serving static content. The rest will come by way of compatible apps.
 
 Examples:
@@ -176,7 +176,7 @@ Available in envion as `request_protocol`. Same semantics as WSGI.
 > variables should correspond with the presence or absence of the appropriate
 > HTTP header in the request.
 
-As we have no need to look in CGI, these are in their own list in Env.
+As we have no need to look like CGI, these are in their own list in Env.
 
 The complete list of HTTP request headers is available in environ as
 `http_headers`.
@@ -207,11 +207,11 @@ This is half baked at the moment, but the ability to read the request body is
 provided by two functions, both in environ: `request_recv` and
 `request_recv_timeout`.
 
-Here's a theortical usage:
+Here's a theoretical usage:
 
 ``` erlang
 app(Env) ->
-    Body = read_body(proplists:get_value(request_recv, Env), []),
+    Body = read_body(get_value(request_recv, Env), []),
     {{200, "OK"}, [], ["You said: ", Body]}.
 
 read_body(Recv, Acc) ->
@@ -247,7 +247,7 @@ error_logger and letting something like lager intercept those calls, or not.
 > simultaneously invoked by another thread in the same process, and should
 > evaluate false otherwise.
 
-Ah, no. Psycho apps, as Erlang functions, can alwasy qbe called in parallel.
+Ah, no. Psycho apps, as Erlang functions, can always be called in parallel.
 
 #### wsgi.run_once
 
@@ -272,7 +272,7 @@ anew on each request.
 Some ideas for managing state:
 
 - Use cookies!
-- Use Erlang sevices
+- Use Erlang services
 - Use an external server
 
 Cookies are the best! You get nice round-trip state management that scales
@@ -294,24 +294,23 @@ style function that looks something like this:
 ``` erlang
 app(Env) ->
     Db = lookup_db(Env),
-    {?resp_ok, [], stream_fun(Db)}.
+    {{200, "OK"}, [{"Content-Type", "text/plain"}], {fun stream/1, Db}}.
 
-stream_fun(Db) ->
-    fun(next) ->
-            case db:lookup(Db, "data") of
-                {ok, Data} -> {continue, Data};
-                error -> stop
-            end;
-       (close) ->
-            db:close(Db)
+stream(Db) ->
+    case db:lookup(Db, "data") of
+        {ok, Data} ->
+            {continue, Data, Db};
+        error ->
+            db:close(Db),
+            stop
     end.
 ```
 
-In fact, it should be possible to include a fun/1 as the body or as any part of
-a body iolist. This would allow for something like this:
+It should be possible to include {fun/1, Arg0} as the body or as any part of a
+body iolist. This would allow for something like this:
 
 ``` erlang
-["<html>Loading: ", stream_fun(Db), "</html>"]
+["<html>Loading: ", {fun stream/1, Db}, "</html>"]
 ```
 
 ### SSL
