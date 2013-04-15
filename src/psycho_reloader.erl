@@ -40,7 +40,7 @@ beam_timestamp(Path) ->
     case file:read_file_info(Path) of
         {ok, #file_info{mtime=Time}} -> Time;
         {error, _Err} -> undefined
-    end. 
+    end.
 
 loop(PrevTimes) ->
     sleep(),
@@ -54,13 +54,13 @@ check_modules(PrevTimes, CurTimes) ->
     reload_modules(changed_modules(PrevTimes, CurTimes)).
 
 changed_modules(PrevTimes, CurTimes) ->
-    dict:fold(some_fun(CurTimes), [], PrevTimes).
+    dict:fold(changed_module_folder(CurTimes), [], PrevTimes).
 
-some_fun(CurTimes) ->
-    fun(ModInfo, PrevTime, Changed) -> 
+changed_module_folder(CurTimes) ->
+    fun(ModInfo, PrevTime, Changed) ->
             add_if_changed(ModInfo, PrevTime, CurTimes, Changed) end.
 
-add_if_changed(Loaded, PrevTime, CurTimes, Changed) -> 
+add_if_changed(Loaded, PrevTime, CurTimes, Changed) ->
     case PrevTime /= beam_timestamp(Loaded, CurTimes) of
         true -> add_changed_module(Loaded, Changed);
         false -> Changed
