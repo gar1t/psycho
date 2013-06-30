@@ -25,6 +25,7 @@ init([Sock, App]) ->
     {ok, init_state(Sock, App)}.
 
 init_state(Sock, App) ->
+    init_socket(Sock),
     #state{sock=Sock,
            app=App,
            client_ver=undefined,
@@ -33,6 +34,9 @@ init_state(Sock, App) ->
            resp_status=undefined,
            resp_headers=[],
            close=undefined}.
+
+init_socket(Sock) ->
+    ok = inet:setopts(Sock, [{nodelay, true}]).
 
 handle_msg({http, _, {http_request, Method, Path, Ver}}, _From, State) ->
     set_socket_active_once(State),
