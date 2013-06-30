@@ -1,12 +1,5 @@
-compile:
-	cd .. && make compile
+default:
+	cd ..; make
 
-test:
-	cd .. && make test
-
-doc:
-	cd .. && make doc
-
-clean:
-	cd .. && make clean
-
+%:
+	cd ..; make $@

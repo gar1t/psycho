@@ -1,6 +1,9 @@
 compile:
 	./rebar compile
 
+quick:
+	./rebar compile skip_deps=true
+
 clean:
 	./rebar clean
 
