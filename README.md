@@ -284,12 +284,10 @@ registered service in your OTP app and use it -- so simple!
 Though it's the worst option, if you *need* to share state across Erlang VMs,
 use an external data service like memcache, MySQL, or even MongoDB!
 
-## TODO
+## Response Iterables
 
-### Response Iterables
-
-As an alternative to an iolist, the app should be able to return an iterable
-style function that looks something like this:
+As an alternative to an iolist, the app can return an iterable style function
+that looks like this:
 
 ``` erlang
 app(Env) ->
@@ -300,40 +298,26 @@ stream(Db) ->
     case db:lookup(Db, "data") of
         {ok, Data} ->
             {continue, Data, Db};
-        error ->
+        eof ->
             db:close(Db),
-            stop
+            stop;
+		{error, Err} ->
+		    log_error(Err),
+			db:close(Db),
+			error
     end.
 ```
 
-It should be possible to include {fun/1, Arg0} as the body or as any part of a
-body iolist. This would allow for something like this:
+It's possible to include {fun/1, Arg0} as the body or as any part of a body
+iolist. This allows for something like this:
 
 ``` erlang
 ["<html>Loading: ", {fun stream/1, Db}, "</html>"]
 ```
 
-It's tempting to also support a zero-arg function:
+Spec: fun(State) -> {continue, Data, NextState} | stop | {stop, Data}
 
-``` erlang
-app(Env) ->
-    {{200, "OK"}, [{"Content-Type", "text/plain"}], fun stream/0}.
-
-stream() ->
-    case db_service:lookup("data") of
-        {ok, Data} ->
-            {continue, Data};
-        error ->
-            stop
-    end.
-```
-
-This makes sense for service-oriented interfaces that manage data lifecycle
-independently of the request handler.
-
-BUT - in the spirit of KISS and simplifying servers/middleware development, we
-should limit it to a single arg. The case where an app doesn't care about iter
-state, it can pass along an empty list or an unused variable like `State`.
+## TODO
 
 ### SSL
 
@@ -398,3 +382,28 @@ Notes:
 The equivalent of WSGI's "iter" pattern in Psycho would look like this:
 
     {{200, "OK"}, [], {chunks, {fun iter/1, []}}}
+
+### Content-Disposition in static
+
+See CherryPy's static.py for how they do this.
+
+## Notes From CherryPy
+
+CherryPy provides a straight forward WSGI server implementation.
+
+It also provides an application level framework on top of it.
+
+When using the CherryPy framework, you indirectly work with CPWSGIServer, which
+wraps the vanilla WSGI server.
+
+CPWSGIServer provides cherrpy.tree as the WSGI application, which is an
+instance of _cptree.Tree. Tree implements __call__ according to the WSGI
+interface. The call implementation is basically a pass through to one of the
+tree's configured applications based on the script name.
+
+Apps can be either raw WSGI apps or _cptree.Application, which uses a WSGI app
+helper to implement the expected interface. The helper in turn supports a
+pipeline of apps, including the provided app as well as any middleware.
+
+This took a while to sort through. I'm inclined to provide a similar facility
+within Psycho, but make it a bit more transparent.

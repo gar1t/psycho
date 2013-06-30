@@ -241,8 +241,14 @@ respond_headers([], Sock) ->
 header_value(L) when is_list(L) -> L;
 header_value(I) when is_integer(I) -> integer_to_list(I).
 
+respond_body(#state{sock=Sock, resp_body={Fun, IterState}})
+  when is_function(Fun) ->
+    send_body_iter(Sock, Fun, IterState);
 respond_body(#state{sock=Sock, resp_body=Body}=State) ->
-    ok = gen_tcp:send(Sock, maybe_encode_chunk(Body, State)).
+    send_data(Sock, maybe_encode_chunk(Body, State)).
+
+send_data(Sock, Data) ->
+    ok = gen_tcp:send(Sock, Data).
 
 maybe_encode_chunk(Data, #state{resp_chunked=true}) ->
     [encode_chunk(Data), last_chunk()];
@@ -255,6 +261,19 @@ encoded_chunk_size(Chunk) ->
     integer_to_list(iolist_size(Chunk), 16).
 
 last_chunk() -> ["0", ?CRLF, ?CRLF].
+
+send_body_iter(Sock, Fun, IterState) ->
+    handle_body_iter(apply_body_iter(Fun, IterState), Sock, Fun).
+
+apply_body_iter(Fun, IterState) -> Fun(IterState).
+
+handle_body_iter({continue, Data, IterState}, Sock, Fun) ->
+    send_data(Sock, Data),
+    send_body_iter(Sock, Fun, IterState);
+handle_body_iter(stop, _Sock, _Fun) ->
+    ok;
+handle_body_iter({stop, Data}, Sock, _Fun) ->
+    send_data(Sock, Data).
 
 close_or_keep_alive(#state{close=true}=S) ->
     close(S);
