@@ -171,7 +171,8 @@ finalize_response(State) ->
     apply_state_transforms(
       [fun check_content_len/1,
        fun check_date/1,
-       fun check_server/1],
+       fun check_server/1,
+       fun check_keep_alive/1],
       State).
 
 check_content_len(State) ->
@@ -210,6 +211,13 @@ check_server(defined, State) -> State;
 check_server(undefined, State) ->
     add_resp_header("Server", ?server, State).
 
+check_keep_alive(State) ->
+    check_keep_alive(resp_header_status("connection", State), State).
+
+check_keep_alive(defined, State) -> State;
+check_keep_alive(undefined, #state{close=true}=State) -> State;
+check_keep_alive(undefined, #state{close=false}=State) ->
+    add_resp_header("Connection", "keep-alive", State).
 
 respond(State) ->
     respond_status(State),
