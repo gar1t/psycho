@@ -145,6 +145,8 @@ handle_app_result({Status, Headers, Body}, State) ->
 handle_app_result({'EXIT', Err}, State) ->
     respond(?status_internal_server_error, [], State),
     error({app_error, Err});
+handle_app_result({Status, Headers}, State) ->
+    respond(Status, Headers, State);
 handle_app_result(Other, State) ->
     respond(?status_internal_server_error, [], State),
     error({bad_return_value, Other}).
