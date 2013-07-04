@@ -7,19 +7,20 @@
 
 -define(chunk_read_size, 409600).
 -define(DEFAULT_CONTENT_TYPE, "text/plain").
+-define(DEFAULT_FILE, "index.html").
 
 -record(read_state, {path, file}).
 
 %% TODO: Options to include:
 %%
-%% -Content type proplist
+%% - Content type proplist
+%% - Default file for a dir
 %%
 create_app(Dir) ->
     fun(Env) -> ?MODULE:serve_file(Dir, Env) end.
 
 serve_file(Dir, Env) ->
-    Path = requested_file(Dir, Env),
-    Info = read_file_info(Path),
+    {Info, Path} = resolved_file_info(requested_path(Dir, Env)),
     LastModified = last_modified(Info),
     ContentType = content_type(Path),
     Size = file_size(Info),
@@ -31,7 +32,7 @@ serve_file(Dir, Env) ->
     Body = body_iterable(Path, open_file(Path)),
     {{200, "OK"}, Headers, Body}.
 
-requested_file(Dir, Env) ->
+requested_path(Dir, Env) ->
     filename:join(Dir, relative_request_path(Env)).
 
 relative_request_path(Env) ->
@@ -41,12 +42,27 @@ strip_leading_slashes([$/|Rest]) -> strip_leading_slashes(Rest);
 strip_leading_slashes([$\\|Rest]) -> strip_leading_slashes(Rest);
 strip_leading_slashes(RelativePath) -> RelativePath.
 
-read_file_info(Path) ->
-    handle_read_file_info(file:read_file_info(Path, [{time, universal}])).
+resolved_file_info(Path) ->
+    handle_file_or_dir_info(file_info(Path), Path).
 
-handle_read_file_info({ok, #file_info{type=regular}=Info}) -> Info;
-handle_read_file_info({ok, _}) -> not_found();
-handle_read_file_info({error, _}) -> not_found().
+file_info(Path) ->
+    file:read_file_info(Path, [{time, universal}]).
+
+handle_file_or_dir_info({ok, #file_info{type=directory}}, DirPath) ->
+    FilePath = apply_default_file(DirPath),
+    handle_file_info(file_info(FilePath), FilePath);
+handle_file_or_dir_info(Info, Path) ->
+    handle_file_info(Info, Path).
+
+apply_default_file(Dir) ->
+    filename:join(Dir, ?DEFAULT_FILE).
+
+handle_file_info({ok, #file_info{type=regular}=Info}, Path) ->
+    {Info, Path};
+handle_file_info({ok, _}, _Path) ->
+    not_found();
+handle_file_info({error, _}, _Path) ->
+    not_found().
 
 last_modified(#file_info{mtime=MTime}) ->
     psycho_util:http_date(MTime).
