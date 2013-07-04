@@ -6,6 +6,7 @@
 -include("http_status.hrl").
 
 -define(chunk_read_size, 409600).
+-define(DEFAULT_CONTENT_TYPE, "text/plain").
 
 -record(read_state, {path, file}).
 
@@ -51,7 +52,7 @@ last_modified(#file_info{mtime=MTime}) ->
     psycho_util:http_date(MTime).
 
 content_type(Path) ->
-    psycho_mime:type_from_path(Path).
+    psycho_mime:type_from_path(Path, ?DEFAULT_CONTENT_TYPE).
 
 file_size(#file_info{size=Size}) -> integer_to_list(Size).
 
