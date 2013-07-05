@@ -9,6 +9,8 @@
 
 -record(state, {handler_sup, lsock, app}).
 
+-define(backlog, 128).
+
 %%%===================================================================
 %%% Start / init
 %%%===================================================================
@@ -45,7 +47,10 @@ binding_port(Other) -> error({invalid_binding, Other}).
 
 listen_options(_Binding, _Options) ->
     %% TODO - use Binding to specify bound IP addr, expose to Options?
-    [{active, false}, {reuseaddr, true}].
+    [binary,
+     {active, false},
+     {reuseaddr, true},
+     {backlog, ?backlog}].
 
 handle_listen({ok, LSock}) -> LSock;
 handle_listen({error, Err}) -> error({listen, Err}).
