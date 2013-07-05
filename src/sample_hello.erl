@@ -8,4 +8,4 @@ start_server(Port) ->
     psycho_server:start(Port, ?MODULE).
 
 app(_Env) ->
-    {?status_ok, [], "hello!"}.
+    {?status_ok, [{"Content-Type", "text/plain"}], "Hello!"}.
