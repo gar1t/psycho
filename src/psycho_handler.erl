@@ -18,6 +18,8 @@
 -define(server, "psycho").
 -define(CRLF, "\r\n").
 
+-define(is_resp_body_binary(S), is_binary(S#state.resp_body)).
+
 start_link(Sock, App) ->
     proc:start_link(?MODULE, [Sock, App]).
 
@@ -186,16 +188,22 @@ resp_header_status(Name, #state{resp_header_names=Names}) ->
         false -> undefined
     end.
 
-check_content_len(defined,     _,    S) -> S;
-check_content_len(undefined, {1, 1}, S) -> set_chunked_resp(S);
+check_content_len(defined,   _,      S) -> S;
+check_content_len(undefined, _,      S) when ?is_resp_body_binary(S)
+                                        -> set_resp_content_len(S);
+check_content_len(undefined, {1, 1}, S) -> set_resp_chunked(S);
 check_content_len(undefined, {1, 0}, S) -> set_close(true, S).
 
-set_chunked_resp(State) ->
-    ChunkedState = State#state{resp_chunked=true},
-    add_resp_header("Transfer-Encoding", "chunked", ChunkedState).
+set_resp_content_len(#state{resp_body=Body}=State) ->
+    Len = integer_to_list(size(Body)),
+    add_resp_header("Content-Length", Len, State).
 
 add_resp_header(Name, Value, #state{resp_headers=Hs}=S) ->
     S#state{resp_headers=[{Name, Value}|Hs]}.
+
+set_resp_chunked(State) ->
+    ChunkedState = State#state{resp_chunked=true},
+    add_resp_header("Transfer-Encoding", "chunked", ChunkedState).
 
 check_date(State) ->
     check_date(resp_header_status("date", State), State).

@@ -317,6 +317,24 @@ iolist. This allows for something like this:
 
 Spec: fun(State) -> {continue, Data, NextState} | stop | {stop, Data}
 
+## Content-Length
+
+The Content-Length header will be set automatically by Psycho if both these
+conditions hold:
+
+- Content-Length is not already present
+- The response body is binary
+
+PEP 333 has this to say about content length:
+
+http://www.python.org/dev/peps/pep-0333/#handling-the-content-length-header
+
+If the body is an iolist, we don't want to spend the cost of iolist_size at the
+server level -- this is something the application should do.
+
+For cases where a response is generated as a binary -- e.g. a template
+rendering or json encoding -- we will automatically handle Content-Length.
+
 ## TODO
 
 ### SSL
