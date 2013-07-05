@@ -405,6 +405,13 @@ The equivalent of WSGI's "iter" pattern in Psycho would look like this:
 
 See CherryPy's static.py for how they do this.
 
+### Use sendfile in psycho_static
+
+This may also be premature optimization thinking, but it may be considerably
+more efficient to use file:sendfile rather than read/write the file.
+
+Measure first.
+
 ## Notes From CherryPy
 
 CherryPy provides a straight forward WSGI server implementation.
