@@ -18,6 +18,7 @@
 -define(server, "psycho").
 -define(CRLF, "\r\n").
 
+-define(is_string(X), is_list(X) orelse is_binary(X)).
 -define(is_resp_body_binary(S), is_binary(S#state.resp_body)).
 
 start_link(Sock, App) ->
@@ -161,10 +162,15 @@ respond(Status, Headers, Body, State) ->
 
 set_response(Status, Headers, Body, S) ->
     S#state{
-      resp_status=Status,
+      resp_status=validate_status(Status),
       resp_headers=Headers,
       resp_header_names=header_names(Headers),
       resp_body=Body}.
+
+validate_status({Code, Desc}=Status)
+  when is_integer(Code),
+       ?is_string(Desc) -> Status;
+validate_status(Status) -> error({bad_status, Status}).
 
 header_names(Headers) ->
     [string:to_lower(Name) || {Name, _} <- Headers].
