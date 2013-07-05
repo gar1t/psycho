@@ -26,7 +26,10 @@ maybe_handoff_socket(_Other, _Sock) ->
 
 handle_msg({start_handler, Sock, Apps}, _From, State) ->
     handle_start_handler(Sock, Apps, State);
-handle_msg({'EXIT', _Handler, _Reason}, noreply, State) ->
+handle_msg({'EXIT', _Handler, normal}, noreply, State) ->
+    {noreply, State};
+handle_msg({'EXIT', Handler, Reason}, noreply, State) ->
+    log_error(Handler, Reason),
     {noreply, State};
 handle_msg(Other, _From, State) ->
     %% TEMP
@@ -37,3 +40,5 @@ handle_start_handler(Sock, Apps, State) ->
     Result = psycho_handler:start_link(Sock, Apps),
     {reply, Result, State}.
 
+log_error(Handler, Err) ->
+    psycho_log:error({handler_error, Handler, Err}).
