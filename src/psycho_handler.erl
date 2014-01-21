@@ -6,12 +6,12 @@
 
 -export([init/1, handle_msg/3]).
 
+-include("http_status.hrl").
+
 -record(state, {sock, app,
                 client_ver, env, req_headers,
                 resp_status, resp_headers, resp_header_names, resp_body,
                 resp_chunked, close}).
-
--include("http_status.hrl").
 
 -define(dtoc(D), D + 48).
 -define(period, 46).
@@ -112,7 +112,10 @@ set_persistent_connection(#state{client_ver=Ver}=S) ->
     set_persistent_connection(Ver, Connection, S).
 
 req_header(Name, #state{req_headers=Headers}) ->
-    proplists:get_value(Name, Headers).
+    case lists:keyfind(Name, 1, Headers) of
+        {_, Val} -> Val;
+        false -> undefined
+    end.
 
 set_persistent_connection({1, 1}, "close",      S) -> set_close(true, S);
 set_persistent_connection({1, 1}, _,            S) -> set_close(false, S);

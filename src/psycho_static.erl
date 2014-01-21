@@ -36,7 +36,7 @@ requested_path(Dir, Env) ->
     filename:join(Dir, relative_request_path(Env)).
 
 relative_request_path(Env) ->
-    strip_leading_slashes(proplists:get_value(request_path, Env)).
+    strip_leading_slashes(psycho:env_val(request_path, Env, "")).
 
 strip_leading_slashes([$/|Rest]) -> strip_leading_slashes(Rest);
 strip_leading_slashes([$\\|Rest]) -> strip_leading_slashes(Rest);
