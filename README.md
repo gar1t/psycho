@@ -364,6 +364,15 @@ would be parsed like this:
 
     {"/foo/bar", "baz=bam", [{"baz", "bam"}]}
 
+This could be handled lazily as well -- i.e. the first function to use this
+would call a helper function like this:
+
+    app(Env0) ->
+        Env = psycho_util:ensure_parsed_request_path(Env0),
+        dispatch(Env).
+
+This would be used primarily by routing applications.
+
 ### Explicit Chunking
 
 From PEP 333:
