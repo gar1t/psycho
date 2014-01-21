@@ -1,0 +1,10 @@
+%%% -*-erlang-*-
+{application, app_id,
+ [{description, "Pyscho project"},
+  {vsn, "0.0.0"},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {mod, {e2_application, [app_id_app]}},
+  {env, []}
+ ]}.

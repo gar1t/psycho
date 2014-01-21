@@ -1,0 +1,38 @@
+#!/bin/sh -e
+
+usage() {
+    echo "usage: psycho-mkapp APP_ID APP_DIR"
+    exit 1
+}
+
+app_id=$1
+if [ "$app_id" = "" ]; then
+    usage 1
+fi
+
+app_dir=$2
+if [ "$app_dir" = "" ]; then
+    usage 1
+fi
+
+set -u
+
+app_dir() {
+    mkdir -p "$app_dir"
+}
+
+project_skel() {
+    cp -a priv/skel/* "$app_dir/"
+    for file in `find "$app_dir" -type f`; do
+        newname=`echo $file | sed "s/app_id/$app_id/"`
+	if [ "$file" != "$newname" ]; then
+	    mv "$file" "$newname"
+	fi
+	sed -i "s/app_id/$app_id/" "$newname"
+    done
+}
+
+app_dir
+project_skel
+
+echo "Created an empty psycho project in $app_dir"
