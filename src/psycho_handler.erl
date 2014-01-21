@@ -136,12 +136,7 @@ request_recv_timeout_fun(Sock) ->
     fun(Length, Timeout) -> gen_tcp:recv(Sock, Length, Timeout) end.
 
 dispatch_to_app(#state{app=App, env=Env}=State) ->
-    handle_app_result(catch call_app(App, Env), State).
-
-call_app(M, Env) when is_atom(M) -> M:app(Env);
-call_app({M, F}, Env) -> M:F(Env);
-call_app({M, F, A}, Env) -> erlang:apply(M, F, [A ++ [Env]]);
-call_app(Fun, Env) when is_function(Fun) -> Fun(Env).
+    handle_app_result(catch psycho:call_app(App, Env), State).
 
 handle_app_result({Status, Headers, Body}, State) ->
     respond(Status, Headers, Body, State);
