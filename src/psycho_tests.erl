@@ -56,6 +56,9 @@ test_routes() ->
     R2 = fun(Routes, Env, Opts) -> psycho_route:route(Routes, Env, Opts) end,
     App = fun(Result) -> fun(_Env) -> Result end end,
     Env = fun(Path) -> [{request_path, Path}] end,
+    Env2 = fun(Method, Path) -> [{request_method, Method},
+                                 {request_path, Path}]
+           end,
 
     NotFoundHandlerOpts = [{not_found_handler, App(not_found)}],
 
@@ -65,7 +68,9 @@ test_routes() ->
          {{exact, "/bar"}, App(bar)},
          {{starts_with, "/bar"}, App(starts_with_bar)},
          {{matches, "^/baz/(bam|BAM)$"}, App(baz_bam)},
-         {{matches, "^/baz/"}, App(baz_other)}],
+         {{matches, "^/baz/"}, App(baz_other)},
+         {"POST", "/bam", App(bam_post)},
+         {"PUT", {starts_with, "/bam/"}, App(bam_other_put)}],
 
     %% Test routes to app proxies
     root = R(Env("/"), Routes),
@@ -77,6 +82,8 @@ test_routes() ->
     baz_other = R(Env("/baz/bAm"), Routes),
     baz_other = R(Env("/baz/bam/foo"), Routes),
     not_found = R2(Env("baz/bam"), Routes, NotFoundHandlerOpts),
+    bam_post = R(Env2("POST", "/bam"), Routes),
+    bam_other_put = R(Env2("PUT", "/bam/foo"), Routes),
     not_found = R2(Env("/not_handled"), Routes, NotFoundHandlerOpts),
 
     %% Default not found handler
