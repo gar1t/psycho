@@ -30,10 +30,6 @@ handle_msg({'EXIT', _Handler, normal}, noreply, State) ->
     {noreply, State};
 handle_msg({'EXIT', Handler, Reason}, noreply, State) ->
     log_error(Handler, Reason),
-    {noreply, State};
-handle_msg(Other, _From, State) ->
-    %% TEMP
-    io:format("****** SUP GOT ~p~n", [Other]),
     {noreply, State}.
 
 handle_start_handler(Sock, Apps, State) ->
