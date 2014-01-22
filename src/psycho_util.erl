@@ -2,7 +2,8 @@
 
 -export([http_date/1,
          ensure_parsed_request_path/1,
-         parse_request_path/1]).
+         parse_request_path/1,
+         parse_query_string/1]).
 
 http_date(UTC) ->
     {{Year, Month, Day}, {Hour, Min, Sec}} = UTC,
@@ -54,11 +55,13 @@ split_once([Char|Rest], Delim, Acc) ->
 split_once([], _Delim, Acc) ->
     {lists:reverse(Acc), ""}.
 
-parse_query_string(QS) ->
-    [split_once(Part, $=, "") || Part <- split_query_string(QS)].
+parse_query_string(QS) when is_list(QS) ->
+    [qs_nameval(Part) || Part <- split_qs(QS)];
+parse_query_string(QS) when is_binary(QS) ->
+    parse_query_string(binary_to_list(QS)).
 
-split_query_string("") -> [];
-split_query_string(QS) ->
+split_qs("") -> [];
+split_qs(QS) ->
     split_all(QS, $&, "", []).
 
 split_all([Delim|Rest], Delim, Cur, Acc) ->
@@ -67,3 +70,20 @@ split_all([Char|Rest], Delim, Cur, Acc) ->
     split_all(Rest, Delim, [Char|Cur], Acc);
 split_all([], _Delim, Last, Acc) ->
     lists:reverse([lists:reverse(Last)|Acc]).
+
+qs_nameval(Str) ->
+    {Name, Value} = split_once(Str, $=, ""),
+    {unescape_qs_val(Name), unescape_qs_val(Value)}.
+
+unescape_qs_val(Str) ->
+    unescape_qs_val(Str, []).
+
+unescape_qs_val([$%, H1, H2|Rest], Acc) ->
+    Ch = list_to_integer([H1, H2], 16),
+    unescape_qs_val(Rest, [Ch|Acc]);
+unescape_qs_val([$+|Rest], Acc) ->
+    unescape_qs_val(Rest, [$ |Acc]);
+unescape_qs_val([Ch|Rest], Acc) ->
+    unescape_qs_val(Rest, [Ch|Acc]);
+unescape_qs_val([], Acc) ->
+    lists:reverse(Acc).

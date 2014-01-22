@@ -1,13 +1,20 @@
 -module(psycho).
 
--export([call_app/2, priv_dir/0,
+-export([call_app/2, call_app_with_data/3,
+         priv_dir/0,
          env_val/2, env_val/3,
          env_header/2, env_header/3]).
 
 call_app(M, Env) when is_atom(M) -> M:app(Env);
 call_app({M, F}, Env) -> M:F(Env);
 call_app({M, F, A}, Env) -> erlang:apply(M, F, [A ++ [Env]]);
-call_app(Fun, Env) when is_function(Fun) -> Fun(Env).
+call_app(Fun, Env) -> Fun(Env).
+
+call_app_with_data(M, Env, Data) when is_atom(M) -> M:app(Env, Data);
+call_app_with_data({M, F}, Env, Data) -> M:F(Env, Data);
+call_app_with_data({M, F, A}, Env, Data) ->
+    erlang:apply(M, F, [A ++ [Env, Data]]);
+call_app_with_data(Fun, Env, Data) -> Fun(Env, Data).
 
 priv_dir() ->
     priv_dir(code:which(?MODULE)).

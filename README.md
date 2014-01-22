@@ -203,26 +203,22 @@ Maybe.
 > in-memory or on disk, or use any other technique for providing such an input
 > stream, according to its preference.)
 
-This is half baked at the moment, but the ability to read the request body is
-provided by two functions, both in environ: `request_recv` and
-`request_recv_timeout`.
+We don't want this. We should avoid side effects built into the API. Instead,
+we should let an application return a value that indicates it wants to receive
+data from the request body.
 
-Here's a theoretical usage:
+At a minimum, the supported values should be:
 
-``` erlang
-app(Env) ->
-    Body = read_body(get_value(request_recv, Env), []),
-    {{200, "OK"}, [], ["You said: ", Body]}.
+    {recv_body, Length, App} | {recv_body, Length, Timeout, App}
+	Length :: integer()
+	Callback :: fun((Env, {Read, Bin}) -> Result)
+	Read :: integer()
+	Bin :: iolist()
 
-read_body(Recv, Acc) ->
-    case Recv(1024) of
-        {ok, Data} -> read_body(Recv, [Data|Acc]);
-        {error, _} -> lists:reverse(Acc)
-    end.
-```
+And fancier (very useful):
 
-The timeout variable accepts a second argument, which is a recv timeout in
-milliseconds.
+    {recv_form_data, App} | {recv_form_data, MaxLength, Timeout, App}
+	Callback :: fun((Env, Data) -> Result)
 
 #### wsgi.errors
 

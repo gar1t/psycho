@@ -9,7 +9,7 @@
 -include("http_status.hrl").
 
 -record(state, {sock, app,
-                client_ver, env, req_headers,
+                client_ver, env, req_headers, req_content_len, recv_len,
                 resp_status, resp_headers, resp_header_names, resp_body,
                 resp_chunked, close}).
 
@@ -20,6 +20,9 @@
 
 -define(is_string(X), is_list(X) orelse is_binary(X)).
 -define(is_resp_body_binary(S), is_binary(S#state.resp_body)).
+
+-define(IDLE_TIMEOUT, 300000).
+-define(RECV_ALL_MAX, 1000000).
 
 start_link(Sock, App) ->
     proc:start_link(?MODULE, [Sock, App]).
@@ -34,6 +37,8 @@ init_state(Sock, App) ->
            client_ver=undefined,
            env=[],
            req_headers=[],
+           req_content_len=undefined,
+           recv_len=0,
            resp_status=undefined,
            resp_headers=[],
            close=undefined}.
@@ -100,6 +105,7 @@ set_socket_raw_passive(#state{sock=Sock}) ->
 finalize_request(State) ->
     apply_state_transforms(
       [fun set_persistent_connection/1,
+       fun set_req_content_len/1,
        fun finalize_env/1],
       State).
 
@@ -125,32 +131,66 @@ set_persistent_connection({1, 0}, _,            S) -> set_close(true, S).
 set_close(Close, S) ->
     S#state{close=Close}.
 
-finalize_env(#state{env=Env, req_headers=Headers, sock=Sock}=S) ->
-    S#state{
-      env=[{http_headers, Headers},
-           {request_recv, request_recv_fun(Sock)},
-           {request_recv_timeout, request_recv_timeout_fun(Sock)}
-           |Env]}.
+set_req_content_len(S) ->
+    S#state{req_content_len=env_val(content_length, S)}.
 
-request_recv_fun(Sock) ->
-    fun(Length) -> gen_tcp:recv(Sock, Length) end.
+env_val(Name, #state{env=Env}) ->
+    psycho:env_val(Name, Env).
 
-request_recv_timeout_fun(Sock) ->
-    fun(Length, Timeout) -> gen_tcp:recv(Sock, Length, Timeout) end.
+finalize_env(#state{env=Env, req_headers=Headers}=S) ->
+    S#state{env=[{http_headers, Headers}|Env]}.
 
 dispatch_to_app(#state{app=App, env=Env}=State) ->
     handle_app_result(catch psycho:call_app(App, Env), State).
 
-handle_app_result({Status, Headers, Body}, State) ->
+handle_app_result({{I, _}=Status, Headers, Body}, State) when is_integer(I) ->
     respond(Status, Headers, Body, State);
+handle_app_result({{I, _}=Status, Headers}, State) when is_integer(I) ->
+    respond(Status, Headers, State);
+handle_app_result({recv_body, Length, App}, State) ->
+    handle_recv(recv(Length, ?IDLE_TIMEOUT, State), App, State);
+handle_app_result({recv_body, Length, Timeout, App}, State) ->
+    handle_recv(recv(Length, Timeout, State), App, State);
+handle_app_result({recv_form_data, App}, State) ->
+    handle_recv_form_data(recv_all(?IDLE_TIMEOUT, State), App, State);
+handle_app_result({recv_form_data, Timeout, App}, State) ->
+    handle_recv_form_data(recv_all(Timeout, State), App, State);
 handle_app_result({'EXIT', Err}, State) ->
     respond(?status_internal_server_error, [], State),
     error({app_error, Err});
-handle_app_result({Status, Headers}, State) ->
-    respond(Status, Headers, State);
 handle_app_result(Other, State) ->
     respond(?status_internal_server_error, [], State),
     error({bad_return_value, Other}).
+
+recv(Length, Timeout, #state{sock=Sock}) ->
+    gen_tcp:recv(Sock, Length, Timeout).
+
+handle_recv({ok, Data}, App, #state{env=Env}=State) ->
+    handle_app_result(
+      catch psycho:call_app_with_data(App, Env, Data),
+      increment_recv_len(size(Data), State)).
+
+increment_recv_len(I, #state{recv_len=Len}=S) ->
+    S#state{recv_len=I + Len}.
+
+recv_all(_Timeout, #state{req_content_len=undefined}) ->
+    {ok, {0, []}};
+recv_all(_Timeout, #state{req_content_len=Len}) when Len > ?RECV_ALL_MAX ->
+    error({recv_all_content_len, Len});
+recv_all(Timeout, #state{sock=Sock, req_content_len=Len}) ->
+    gen_tcp:recv(Sock, Len, Timeout).
+
+handle_recv_form_data({ok, Data}, App, #state{env=Env}=State) ->
+    ContentType = env_val(content_type, State),
+    Decoded = decode_form_data(ContentType, Data),
+    handle_app_result(
+      catch App(Decoded, Env),
+      increment_recv_len(size(Data), State)).
+
+decode_form_data("application/x-www-form-urlencoded", Data) ->
+    psycho_util:parse_query_string(Data);
+decode_form_data(Other, _Data) ->
+    error({unknown_form_data_type, Other}).
 
 respond(Status, Headers, State) ->
     respond(Status, Headers, [], State).
@@ -287,10 +327,21 @@ handle_body_iter(stop, _Sock, _Fun) ->
 handle_body_iter({stop, Data}, Sock, _Fun) ->
     send_data(Sock, Data).
 
-close_or_keep_alive(#state{close=true}=S) ->
-    close(S);
-close_or_keep_alive(S) ->
-    keep_alive(S).
+close_or_keep_alive(#state{close=true}=S) -> close(S);
+close_or_keep_alive(State) ->
+    handle_unread_data(unread_data(State), State).
+
+unread_data(#state{req_content_len=undefined}) ->
+    false;
+unread_data(#state{req_content_len=Len, recv_len=Recv}) ->
+    Recv < Len.
+
+handle_unread_data(true, State) ->
+    %% TEMP msg - remove
+    io:format("**** closing socket due to unread data~n"),
+    close(State);
+handle_unread_data(false, State) ->
+    keep_alive(State).
 
 close(#state{sock=Sock}) ->
     ok = gen_tcp:close(Sock),
