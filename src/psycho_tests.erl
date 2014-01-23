@@ -5,7 +5,8 @@
 run() ->
     test_parse_request_path(),
     test_ensure_parsed_request_path(),
-    test_routes().
+    test_routes(),
+    test_crypto().
 
 test_parse_request_path() ->
     io:format("parse_request_path: "),
@@ -88,5 +89,28 @@ test_routes() ->
 
     %% Default not found handler
     {{404, "Not Found"}, _, _} = R(Env("/not_handled"), Routes),
+
+    io:format("OK~n").
+
+test_crypto() ->
+    io:format("crypto: "),
+
+    E = fun(Data, Key) -> psycho_util:encrypt(Data, Key) end,
+    D = fun(Data, Key) -> psycho_util:decrypt(Data, Key) end,
+
+    Data1 = <<"hello">>,
+    Data2 = <<"there">>,
+    Key1 = <<"sesame">>,
+    Key2 = <<"letmein">>,
+
+    {ok, Data1} = D(E(Data1, Key1), Key1),
+    {ok, Data1} = D(E(Data1, Key2), Key2),
+    {ok, Data2} = D(E(Data2, Key1), Key1),
+    {ok, Data2} = D(E(Data2, Key2), Key2),
+
+    error = D(E(Data1, Key1), Key2),
+    error = D(E(Data1, Key2), Key1),
+    error = D(E(Data2, Key1), Key2),
+    error = D(E(Data2, Key2), Key1),
 
     io:format("OK~n").

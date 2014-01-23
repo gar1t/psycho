@@ -3,7 +3,10 @@
 -export([http_date/1,
          ensure_parsed_request_path/1,
          parse_request_path/1,
-         parse_query_string/1]).
+         parse_query_string/1,
+         encrypt/2, decrypt/2]).
+
+-define(NULL_IV_128, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
 http_date(UTC) ->
     {{Year, Month, Day}, {Hour, Min, Sec}} = UTC,
@@ -87,3 +90,24 @@ unescape_qs_val([Ch|Rest], Acc) ->
     unescape_qs_val(Rest, [Ch|Acc]);
 unescape_qs_val([], Acc) ->
     lists:reverse(Acc).
+
+decrypt(Data, Key) ->
+    PaddedKey = pad(Key, 16),
+    unpad(crypto:aes_cbc_128_decrypt(PaddedKey, ?NULL_IV_128, Data)).
+
+encrypt(Data, Key) ->
+    PaddedData = pad(Data, 16),
+    PaddedKey = pad(Key, 16),
+    crypto:aes_cbc_128_encrypt(PaddedKey, ?NULL_IV_128, PaddedData).
+
+pad(Bin, BlockSize) ->
+    PadCount = BlockSize - (size(Bin) rem BlockSize),
+    Pad = binary:copy(<<PadCount>>, PadCount),
+    <<Bin/binary, Pad/binary>>.
+
+unpad(Bin) ->
+    try binary:part(Bin, 0, size(Bin) - binary:last(Bin)) of
+        Unpadded -> {ok, Unpadded}
+    catch
+        error:badarg -> error
+    end.
