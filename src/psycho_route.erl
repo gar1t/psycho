@@ -20,9 +20,9 @@ dispatch([{Route, App}|Rest], Method, Path, Env, Options) ->
     maybe_dispatch(
       path_matches(Route, Path),
       App, Rest, Method, Path, Env, Options);
-dispatch([{Method, Route, App}|Rest], Method, Path, Env, Options) ->
+dispatch([{RouteMethod, Route, App}|Rest], Method, Path, Env, Options) ->
     maybe_dispatch(
-      path_matches(Route, Path),
+      RouteMethod =:= Method andalso path_matches(Route, Path),
       App, Rest, Method, Path, Env, Options);
 dispatch([Invalid|_], _Method, _Path, _Env, _Options) ->
     error({invald_route, Invalid});
