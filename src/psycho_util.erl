@@ -4,9 +4,16 @@
          ensure_parsed_request_path/1,
          parse_request_path/1,
          parse_query_string/1,
+         ensure_parsed_cookie/1,
+         parse_cookie/1,
+         cookie_header/2,
          encrypt/2, decrypt/2]).
 
--define(NULL_IV_128, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
+-import(psycho, [env_val/2, env_header/3]).
+
+%%%===================================================================
+%%% Date functions
+%%%===================================================================
 
 http_date(UTC) ->
     {{Year, Month, Day}, {Hour, Min, Sec}} = UTC,
@@ -36,15 +43,17 @@ month_name(10) -> "Oct";
 month_name(11) -> "Nov";
 month_name(12) -> "Dec".
 
-ensure_parsed_request_path(Env) ->
-    handle_parsed_request_path(
-      lists:keyfind(parsed_request_path, 1, Env), Env).
+%%%===================================================================
+%%% Request path
+%%%===================================================================
 
-handle_parsed_request_path(false, Env) ->
-    {_, RequestPath} = lists:keyfind(request_path, 1, Env),
-    Parsed = parse_request_path(RequestPath),
+ensure_parsed_request_path(Env) ->
+    handle_parsed_request_path(env_val(parsed_request_path, Env), Env).
+
+handle_parsed_request_path(undefined, Env) ->
+    Parsed = parse_request_path(env_val(request_path, Env)),
     {Parsed, [{parsed_request_path, Parsed}|Env]};
-handle_parsed_request_path({_, Parsed}, Env) ->
+handle_parsed_request_path(Parsed, Env) ->
     {Parsed, Env}.
 
 parse_request_path(Path) ->
@@ -57,6 +66,10 @@ split_once([Char|Rest], Delim, Acc) ->
     split_once(Rest, Delim, [Char|Acc]);
 split_once([], _Delim, Acc) ->
     {lists:reverse(Acc), ""}.
+
+%%%===================================================================
+%%% Query string
+%%%===================================================================
 
 parse_query_string(QS) when is_list(QS) ->
     [qs_nameval(Part) || Part <- split_qs(QS)];
@@ -90,6 +103,42 @@ unescape_qs_val([Ch|Rest], Acc) ->
     unescape_qs_val(Rest, [Ch|Acc]);
 unescape_qs_val([], Acc) ->
     lists:reverse(Acc).
+
+%%%===================================================================
+%%% Cookies
+%%%===================================================================
+
+ensure_parsed_cookie(Env) ->
+    handle_parsed_cookie(env_val(parsed_cookie, Env), Env).
+
+handle_parsed_cookie(undefined, Env) ->
+    Parsed = parse_cookie(env_header("Cookie", Env, "")),
+    {Parsed, [{parsed_cookie, Parsed}|Env]};
+handle_parsed_cookie(Parsed, Env) ->
+    {Parsed, Env}.
+
+parse_cookie(C) when is_list(C) ->
+    [cookie_nameval(Part) || Part <- split_cookie(C)];
+parse_cookie(C) when is_binary(C) ->
+    parse_cookie(binary_to_list(C)).
+
+split_cookie(C) ->
+    split_all(C, $;, "", []).
+
+cookie_nameval(Str) ->
+    {Name, Value} = split_once(Str, $=, ""),
+    {strip_spaces(Name), strip_spaces(Value)}.
+
+strip_spaces(S) -> string:strip(S, both, $ ).
+
+cookie_header(Name, Value) ->
+    {"Set-Cookie", [Name, "=", Value, "; Version=1"]}.
+
+%%%===================================================================
+%%% Crypto
+%%%===================================================================
+
+-define(NULL_IV_128, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
 decrypt(Data, Key) ->
     PaddedKey = pad(Key, 16),
