@@ -388,7 +388,7 @@ Modify `start_link/1` to be:
         App = apply_auth(?MODULE),
         psycho_server:start(?PORT, App).
 
-Delete these functions: 
+Delete these functions:
 
 - `apply_header_footer/1`
 - `page_header/0`
@@ -592,7 +592,7 @@ defined. Let's define them now.
 	home_page(Env) ->
 		default_page("Welcome to the home page!", Env).
 
-	users_page(Env) ->    
+	users_page(Env) ->
 		default_page("Welcome to the users page!", Env).
 
 	other_page(Env) ->
@@ -633,6 +633,8 @@ application!
 
 ## Cookie Based Authentication
 
-Earlier we saw how easy it is to add support for basic authentication.
+Earlier we saw how easy it is to add support for basic authentication -- you
+just have to wrap an application in the right middleware!
 
-XXX
+Next, we'll step through a simple cookie based authentication. The idea is the
+same -- insert some middleware into the chain.
