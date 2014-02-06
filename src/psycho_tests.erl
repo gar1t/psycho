@@ -6,7 +6,8 @@ run() ->
     test_parse_request_path(),
     test_ensure_parsed_request_path(),
     test_routes(),
-    test_crypto().
+    test_crypto(),
+    test_validate().
 
 test_parse_request_path() ->
     io:format("parse_request_path: "),
@@ -112,5 +113,42 @@ test_crypto() ->
     error = D(E(Data1, Key2), Key1),
     error = D(E(Data2, Key1), Key2),
     error = D(E(Data2, Key2), Key1),
+
+    io:format("OK~n").
+
+test_validate() ->
+    io:format("validate: "),
+
+    V = fun(Data, Schema) -> psycho_util:validate(Data, Schema) end,
+
+    %% Empty / base case (first arg is passed through on pass)
+    {ok, []} = V([], []),
+    {ok, data_pass_through} = V(data_pass_through, []),
+
+    %% required
+    {error, {"foo", required}} = V([], [{"foo", [required]}]),
+    {ok, _} = V([{"foo", "FOO"}], [{"foo", [required]}]),
+
+    %% must_equal, literal
+    {error, {"foo", {must_equal, "FOO"}}} =
+        V([], [{"foo", [{must_equal, "FOO"}]}]),
+    {ok, _} = V([{"foo", "FOO"}], [{"foo", [{must_equal, "FOO"}]}]),
+
+    %% must_equal, reference to another field value
+    {ok, _} = V([], [{"foo", [{must_equal, {field, "bar"}}]}]),
+    {error, {"foo", {must_equal, {field,"bar"}}}} =
+        V([{"foo", "FOO"}], [{"foo", [{must_equal, {field, "bar"}}]}]),
+    {error, {"foo", {must_equal, {field,"bar"}}}} =
+        V([{"foo", "FOO"}, {"bar", "BAR"}],
+          [{"foo", [{must_equal, {field, "bar"}}]}]),
+    {ok, _} =
+        V([{"foo", "FOO"}, {"bar", "FOO"}],
+          [{"foo", [{must_equal, {field, "bar"}}]}]),
+
+    %% min_length
+    {error, {"foo", {min_length, 4}}} = V([], [{"foo", [{min_length, 4}]}]),
+    {error, {"foo", {min_length, 4}}} =
+        V([{"foo", "FOO"}], [{"foo", [{min_length, 4}]}]),
+    {ok, _} = V([{"foo", "FOO"}], [{"foo", [{min_length, 3}]}]),
 
     io:format("OK~n").

@@ -7,7 +7,8 @@
          ensure_parsed_cookie/1,
          parse_cookie/1,
          cookie_header/2,
-         encrypt/2, decrypt/2]).
+         encrypt/2, decrypt/2,
+         validate/2, format_validate_error/1]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -160,3 +161,57 @@ unpad(Bin) ->
     catch
         error:badarg -> error
     end.
+
+%%%===================================================================
+%%% Form validation
+%%%===================================================================
+
+validate(Data, [{Field, Checks}|Rest]) ->
+    Value = proplists:get_value(Field, Data),
+    handle_apply_checks(
+      apply_checks(Value, Checks, Field, Data),
+      Data, Rest);
+validate(Data, []) ->
+    {ok, Data}.
+
+apply_checks(Value, [Check|Rest], Field, Data) ->
+    handle_apply_check(
+      apply_check(Value, Check, Data),
+      Check, Value, Rest, Field, Data);
+apply_checks(_Value, [], _Field, _Data) ->
+    ok.
+
+apply_check(Value, required, _Data) ->
+    Value /= undefined;
+apply_check(Value, {must_equal, {field, Field}}, Data) ->
+    Value == proplists:get_value(Field, Data);
+apply_check(Value, {must_equal, Target}, _Data) ->
+    Value == Target;
+apply_check(Value, {min_length, MinLength}, _Data) ->
+    Value /= undefined andalso iolist_size(Value) >= MinLength;
+apply_check(_Value, Check, _Data) ->
+    error({invalid_check, Check}).
+
+handle_apply_check(true, _Check, Value, Rest, Field, Data) ->
+    apply_checks(Value, Rest, Field, Data);
+handle_apply_check(false, Check, _Value, _Rest, Field, _Data) ->
+    {error, {Field, Check}}.
+
+handle_apply_checks(ok, Data, Rest) ->
+    validate(Data, Rest);
+handle_apply_checks({error, Err}, _Data, _Rest) ->
+    {error, Err}.
+
+%% TODO: this is misconceived hard-coded EN -- where should this be?
+format_validate_error({Field, required}) ->
+    io_lib:format("~s is required", [Field]);
+format_validate_error({Field, {must_equal, {field, Target}}}) ->
+    io_lib:format("~s must match ~s", [Field, Target]);
+format_validate_error({Field, {must_equal, Target}}) ->
+    io_lib:format("~s must be ~s", [Field, Target]);
+format_validate_error({Field, {min_length, MinLength}}) ->
+    io_lib:format(
+      "~s must be at least ~b characters long",
+      [Field, MinLength]);
+format_validate_error(Other) ->
+    io_lib:format("~p", [Other]).
