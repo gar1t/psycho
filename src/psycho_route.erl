@@ -45,7 +45,7 @@ regex_matches(Regex, Str) ->
     match == re:run(Str, Regex, [{capture, none}]).
 
 maybe_dispatch(true, App, _Rest, _Method, _Path, Env, _Options) ->
-    App(Env);
+    psycho:call_app(App, Env);
 maybe_dispatch(false, _App, Rest, Method, Path, Env, Options) ->
     dispatch(Rest, Method, Path, Env, Options).
 
