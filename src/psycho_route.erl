@@ -27,7 +27,7 @@ dispatch([{RouteMethod, Route, App}|Rest], Method, Path, Env, Options) ->
 dispatch([Invalid|_], _Method, _Path, _Env, _Options) ->
     error({invald_route, Invalid});
 dispatch([], _Method, _Path, Env, Options) ->
-    (not_found_handler(Options))(Env).
+    psycho:call_app(not_found_handler(Options), Env).
 
 path_matches(Path, Path) -> true;
 path_matches({starts_with, Prefix}, Path) -> starts_with(Prefix, Path);

@@ -197,7 +197,7 @@ handle_recv_form_data({ok, Data}, App, #state{env=Env}=State) ->
     ContentType = env_val(content_type, State),
     Decoded = decode_form_data(ContentType, Data),
     handle_app_result(
-      catch App(Decoded, Env),
+      catch psycho:call_app_with_data(App, Env, Decoded),
       increment_recv_len(size(Data), State)).
 
 decode_form_data("application/x-www-form-urlencoded", Data) ->
