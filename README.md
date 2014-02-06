@@ -211,14 +211,58 @@ At a minimum, the supported values should be:
 
     {recv_body, Length, App} | {recv_body, Length, Timeout, App}
 	Length :: integer()
-	Callback :: fun((Env, {Read, Bin}) -> Result)
-	Read :: integer()
-	Bin :: iolist()
+	Callback :: fun((Data, Env) -> Result)
+	Data :: iolist()
 
-And fancier (very useful):
+And, very useful:
 
-    {recv_form_data, App} | {recv_form_data, MaxLength, Timeout, App}
-	Callback :: fun((Env, Data) -> Result)
+    {recv_form_data, App} | {recv_form_data, Timeout, App}
+	Callback :: fun((Data, Env) -> Result)
+	Data :: proplist()
+
+UPDATE: This is broken, and unfortunately it's very subtle. If psycho provides
+the Env to the recv callback app, it will provide the original Env, which is
+not necessarily the the Env used by the app requsting the callback -- its
+likely different in fact.
+
+Consider this:
+
+     Psycho(Env1) -> App 1(Env2) -> App 2(Env3)
+        |   ^                              |
+       (2)  +---------(1) recv_data -------+
+		|
+        v
+     Callback
+
+In the call chain, the apps can modify Env and the App 2 asks for data. But
+Psycho doesn't see Env3 - it only has Env1, which is uses in the
+Callback. Broken!
+
+I think the right API here - the only possible API, is to require Env in the
+recv result tuple. So the result should look like this:
+
+    {recv_body, Length, App, Env} | {recv_body, Length, Timeout, App, Env}
+
+or this:
+
+    {recv_form_data, App, Env} | {recv_form_data, Timeout, App, Env}
+
+Alternatively, we could skip Env altogether in the callback, so the app
+signature is now:
+
+	Callback :: fun((Data) -> Result)
+
+If the app needed something from the Env - or the Env itself, it would have to
+use a closure:
+
+    app(Env) ->
+	    {recv_form_data, fun(Data) -> handle_data(Data, Env) end}
+
+While this is simpler, it looses the "application" call pattern, which is
+strongly associated with an Env argument. It's as if the response protocol dies
+here and we officially lose the Env. Let's go with the first approach - even
+though it places additional burden on the original app and in many cases the
+Env won't be needed, it's more consistent with the standard API.
 
 #### wsgi.errors
 

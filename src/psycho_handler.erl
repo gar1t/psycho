@@ -147,20 +147,31 @@ handle_app_result({{I, _}=Status, Headers, Body}, State) when is_integer(I) ->
     respond(Status, Headers, Body, State);
 handle_app_result({{I, _}=Status, Headers}, State) when is_integer(I) ->
     respond(Status, Headers, State);
-handle_app_result({recv_body, Length, App}, State) ->
-    handle_recv(recv(Length, ?IDLE_TIMEOUT, State), App, State);
-handle_app_result({recv_body, Length, Timeout, App}, State) ->
-    handle_recv(recv(Length, Timeout, State), App, State);
-handle_app_result({recv_form_data, App}, State) ->
-    handle_recv_form_data(recv_all(?IDLE_TIMEOUT, State), App, State);
-handle_app_result({recv_form_data, Timeout, App}, State) ->
-    handle_recv_form_data(recv_all(Timeout, State), App, State);
+handle_app_result({recv_body, Length, App, Env}, State) ->
+    handle_recv(
+      recv(Length, ?IDLE_TIMEOUT, State),
+      App, setenv(Env, State));
+handle_app_result({recv_body, Length, Timeout, App, Env}, State) ->
+    handle_recv(
+      recv(Length, Timeout, State),
+      App, setenv(Env, State));
+handle_app_result({recv_form_data, App, Env}, State) ->
+    handle_recv_form_data(
+      recv_all(?IDLE_TIMEOUT, State),
+      App, setenv(Env, State));
+handle_app_result({recv_form_data, Timeout, App, Env}, State) ->
+    handle_recv_form_data(
+      recv_all(Timeout, State),
+      App, setenv(Env, State));
 handle_app_result({'EXIT', Err}, State) ->
     respond(?status_internal_server_error, [], State),
     error({app_error, Err});
 handle_app_result(Other, State) ->
     respond(?status_internal_server_error, [], State),
     error({bad_return_value, Other}).
+
+setenv(Env, S) ->
+    S#state{env=Env}.
 
 recv(Length, Timeout, #state{sock=Sock}) ->
     gen_tcp:recv(Sock, Length, Timeout).
