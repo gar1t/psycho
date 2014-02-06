@@ -10,11 +10,11 @@ call_app({M, F}, Env) -> M:F(Env);
 call_app({M, F, A}, Env) -> erlang:apply(M, F, [A ++ [Env]]);
 call_app(Fun, Env) -> Fun(Env).
 
-call_app_with_data(M, Env, Data) when is_atom(M) -> M:app(Env, Data);
-call_app_with_data({M, F}, Env, Data) -> M:F(Env, Data);
+call_app_with_data(M, Env, Data) when is_atom(M) -> M:app(Data, Env);
+call_app_with_data({M, F}, Env, Data) -> M:F(Data, Env);
 call_app_with_data({M, F, A}, Env, Data) ->
-    erlang:apply(M, F, [A ++ [Env, Data]]);
-call_app_with_data(Fun, Env, Data) -> Fun(Env, Data).
+    erlang:apply(M, F, [A ++ [Data, Env]]);
+call_app_with_data(Fun, Env, Data) -> Fun(Data, Env).
 
 priv_dir() ->
     priv_dir(code:which(?MODULE)).
