@@ -3,7 +3,8 @@
 -export([call_app/2, call_app_with_data/3,
          priv_dir/0,
          env_val/2, env_val/3,
-         env_header/2, env_header/3]).
+         env_header/2, env_header/3,
+         parsed_request_path/1]).
 
 call_app(M, Env) when is_atom(M) -> M:app(Env);
 call_app({M, F}, Env) -> M:F(Env);
@@ -42,3 +43,11 @@ env_header(Name, Env, Default) ->
         {_, Value} -> Value;
         _ -> Default
     end.
+
+parsed_request_path(Env) ->
+    handle_parsed_request_path(env_val(parsed_request_path, Env), Env).
+
+handle_parsed_request_path(undefined, Env) ->
+    psycho_util:parse_request_path(env_val(request_path, Env));
+handle_parsed_request_path(Parsed, _Env) ->
+    Parsed.
