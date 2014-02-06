@@ -184,8 +184,10 @@ handle_recv({ok, Data}, App, #state{env=Env}=State) ->
 increment_recv_len(I, #state{recv_len=Len}=S) ->
     S#state{recv_len=I + Len}.
 
-recv_all(_Timeout, #state{req_content_len=undefined}) ->
-    {ok, {0, []}};
+-define(zero_len(Len), Len == undefined orelse Len == 0).
+
+recv_all(_Timeout, #state{req_content_len=Len}) when ?zero_len(Len) ->
+    {ok, <<>>};
 recv_all(_Timeout, #state{req_content_len=Len}) when Len > ?RECV_ALL_MAX ->
     error({recv_all_content_len, Len});
 recv_all(Timeout, #state{sock=Sock, req_content_len=Len}) ->
