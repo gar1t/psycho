@@ -350,8 +350,6 @@ unread_data(#state{req_content_len=Len, recv_len=Recv}) ->
     Recv < Len.
 
 handle_unread_data(true, State) ->
-    %% TEMP msg - remove
-    io:format("**** closing socket due to unread data~n"),
     close(State);
 handle_unread_data(false, State) ->
     keep_alive(State).
