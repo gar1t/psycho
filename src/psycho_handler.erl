@@ -22,7 +22,7 @@
 -define(is_resp_body_binary(S), is_binary(S#state.resp_body)).
 
 -define(IDLE_TIMEOUT, 300000).
--define(RECV_ALL_MAX, 1000000).
+-define(RECV_MAX, 1000000).
 
 start_link(Sock, App) ->
     proc:start_link(?MODULE, [Sock, App]).
@@ -149,19 +149,19 @@ handle_app_result({{I, _}=Status, Headers}, State) when is_integer(I) ->
     respond(Status, Headers, State);
 handle_app_result({recv_body, Length, App, Env}, State) ->
     handle_recv(
-      recv(Length, ?IDLE_TIMEOUT, State),
+      recv(safe_recv_len(Length, State), ?IDLE_TIMEOUT, State),
       App, setenv(Env, State));
 handle_app_result({recv_body, Length, Timeout, App, Env}, State) ->
     handle_recv(
-      recv(Length, Timeout, State),
+      recv(safe_recv_len(Length, State), Timeout, State),
       App, setenv(Env, State));
 handle_app_result({recv_form_data, App, Env}, State) ->
     handle_recv_form_data(
-      recv_all(?IDLE_TIMEOUT, State),
+      recv_remaining(?IDLE_TIMEOUT, State),
       App, setenv(Env, State));
 handle_app_result({recv_form_data, Timeout, App, Env}, State) ->
     handle_recv_form_data(
-      recv_all(Timeout, State),
+      recv_remaining(Timeout, State),
       App, setenv(Env, State));
 handle_app_result({'EXIT', Err}, State) ->
     respond(?status_internal_server_error, [], State),
@@ -170,28 +170,48 @@ handle_app_result(Other, State) ->
     respond(?status_internal_server_error, [], State),
     error({bad_return_value, Other}).
 
+safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
+    min(Requested, Total - Received).
+
 setenv(Env, S) ->
     S#state{env=Env}.
 
-recv(Length, Timeout, #state{sock=Sock}) ->
-    gen_tcp:recv(Sock, Length, Timeout).
+recv(Length, _Timeout, _State) when Length >= ?RECV_MAX ->
+    error({recv_len, Length});
+recv(Length, Timeout, #state{sock=Sock}) when Length > 0 ->
+    gen_tcp:recv(Sock, Length, Timeout);
+recv(_Length, _Timeout, _State) ->
+    {ok, <<>>}.
 
+handle_recv({ok, <<>>}, App, #state{env=Env}=State) ->
+    handle_app_result(
+      error_on_recv_body_after_eof(
+        catch psycho:call_app_with_data(App, Env, <<>>), App),
+      State);
 handle_recv({ok, Data}, App, #state{env=Env}=State) ->
     handle_app_result(
       catch psycho:call_app_with_data(App, Env, Data),
-      increment_recv_len(size(Data), State)).
+      increment_recv_len(size(Data), State));
+handle_recv({error, Error}, _App, _State) ->
+    {stop, {recv_error, Error}}.
+
+error_on_recv_body_after_eof({recv_body, _, _, _}, App) ->
+    error({recv_body_after_eof, App});
+error_on_recv_body_after_eof({recv_body, _, _, _, _}, App) ->
+    error({recv_body_after_eof, App});
+error_on_recv_body_after_eof(Result, _App) ->
+    Result.
 
 increment_recv_len(I, #state{recv_len=Len}=S) ->
     S#state{recv_len=I + Len}.
 
 -define(zero_len(Len), Len == undefined orelse Len == 0).
 
-recv_all(_Timeout, #state{req_content_len=Len}) when ?zero_len(Len) ->
-    {ok, <<>>};
-recv_all(_Timeout, #state{req_content_len=Len}) when Len > ?RECV_ALL_MAX ->
-    error({recv_all_content_len, Len});
-recv_all(Timeout, #state{sock=Sock, req_content_len=Len}) ->
-    gen_tcp:recv(Sock, Len, Timeout).
+recv_remaining(Timeout, State) ->
+    recv(remaining_len(State), Timeout, State).
+
+remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
+    Total - Received.
 
 handle_recv_form_data({ok, Data}, App, #state{env=Env}=State) ->
     ContentType = env_val(content_type, State),
