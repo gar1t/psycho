@@ -24,6 +24,10 @@
 -define(IDLE_TIMEOUT, 300000).
 -define(DEFAULT_RECV_LEN, 32768).
 
+%%%===================================================================
+%%% Start / init
+%%%===================================================================
+
 start_link(Sock, App) ->
     proc:start_link(?MODULE, [Sock, App]).
 
@@ -46,6 +50,10 @@ init_state(Sock, App) ->
 init_socket(Sock) ->
     ok = inet:setopts(Sock, [{nodelay, true}]).
 
+%%%===================================================================
+%%% Process messages / HTTP request state handling
+%%%===================================================================
+
 handle_msg({http, _, {http_request, Method, Path, Ver}}, _From, State) ->
     set_socket_active_once(State),
     {noreply, set_request(Method, Path, Ver, State)};
@@ -60,6 +68,10 @@ handle_msg({tcp_closed, _}, _From, _State) ->
 
 set_socket_active_once(#state{sock=S}) ->
     ok = inet:setopts(S, [{active, once}]).
+
+%%%===================================================================
+%%% Request init / pre app dispatch
+%%%===================================================================
 
 set_request(Method, Path, Ver, State) ->
     State#state{
@@ -140,6 +152,10 @@ env_val(Name, #state{env=Env}) ->
 finalize_env(#state{env=Env, req_headers=Headers}=S) ->
     S#state{env=[{http_headers, Headers}|Env]}.
 
+%%%===================================================================
+%%% App dispatch
+%%%===================================================================
+
 dispatch_to_app(#state{app=App, env=Env}=State) ->
     handle_app_result(catch psycho:call_app(App, Env), State).
 
@@ -162,6 +178,10 @@ handle_app_result(Other, State) ->
     respond(internal_error(), State),
     error({bad_return_value, Other}).
 
+%%%===================================================================
+%%% recv_body support
+%%%===================================================================
+
 handle_app_recv_body(App, Env, Options, State) ->
     Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
@@ -169,22 +189,85 @@ handle_app_recv_body(App, Env, Options, State) ->
       recv(safe_recv_len(Length, State), Timeout, State),
       App, setenv(Env, State)).
 
-setenv(Env, S) -> S#state{env=Env}.
-
-safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
-    min(Requested, Total - Received).
-
-recv(Length, Timeout, #state{sock=Sock}) when Length > 0 ->
-    gen_tcp:recv(Sock, Length, Timeout);
-recv(_Length, _Timeout, _State) ->
-    {ok, <<>>}.
-
 handle_recv({ok, Data}, App, #state{env=Env}=State) ->
     AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
     error_on_recv_body_after_eof(is_eof(Data), AppResult, App),
     handle_app_result(AppResult, increment_recv_len(size(Data), State));
 handle_recv({error, Error}, _App, _State) ->
     {stop, {recv_error, Error}}.
+
+%%%===================================================================
+%%% recv_form_data support
+%%%===================================================================
+
+handle_app_recv_form_data(App, Env, Options, State) ->
+    ContentType = psycho:env_val(content_type, Env),
+    handle_app_recv_form_data_type(
+      ContentType, App, setenv(Env, State), Options).
+
+handle_app_recv_form_data_type(
+  "application/x-www-form-urlencoded", App, State, Options) ->
+    handle_app_recv_urlencoded_data(App, State, Options);
+handle_app_recv_form_data_type(
+  "multipart/form-data;"++_, App, State, Options) ->
+    handle_app_recv_multipart(App, State, Options);
+handle_app_recv_form_data_type(ContentType, _App, State, _Options) ->
+    respond(internal_error("Unsupported content type"), State),
+    error({form_data_content_type, ContentType}).
+
+%%%===================================================================
+%%% urlencoded form data
+%%%===================================================================
+
+handle_app_recv_urlencoded_data(App, State, Options) ->
+    Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    RecvResult = recv_remaining(Timeout, State),
+    handle_recv_urlencoded_form_data(RecvResult, App, State).
+
+handle_recv_urlencoded_form_data({ok, Data}, App, #state{env=Env}=State) ->
+    DecodedData = decode_urlencoded_form_data(Data),
+    AppResult = (catch psycho:call_app_with_data(App, Env, DecodedData)),
+    error_on_recv_body_after_eof(true, AppResult, App),
+    handle_app_result(AppResult, increment_recv_len(size(Data), State));
+handle_recv_urlencoded_form_data({error, Error}, _App, _State) ->
+    {stop, {recv_error, Error}}.
+
+decode_urlencoded_form_data(Data) ->
+    psycho_util:parse_query_string(Data).
+
+%%%===================================================================
+%%% multipart form data
+%%%===================================================================
+
+handle_app_recv_multipart(_App, State, _Options) ->
+    respond(internal_error("TODO: we'll get there"), State),
+    error({"Implement multipart form data"}).
+
+%%%===================================================================
+%%% recv related general/shared functions
+%%%===================================================================
+
+safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
+    min(Requested, Total - Received).
+
+recv_remaining(Timeout, State) ->
+    recv(remaining_len(State), Timeout, State).
+
+remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
+    Total - Received.
+
+recv(Length, Timeout, #state{sock=Sock}) when Length > 0 ->
+    gen_tcp:recv(Sock, Length, Timeout);
+recv(_Length, _Timeout, _State) ->
+    {ok, <<>>}.
+
+setenv(Env, S) -> S#state{env=Env}.
+
+internal_error() ->
+    internal_error("Server error").
+
+internal_error(Msg) ->
+    {?status_internal_server_error, [{"Content-Type", "text/plain"}], Msg}.
 
 is_eof(<<>>) -> true;
 is_eof(_) -> false.
@@ -199,41 +282,9 @@ error_on_recv_body_after_eof(true, _Result, _App) -> ok.
 increment_recv_len(I, #state{recv_len=Len}=S) ->
     S#state{recv_len=I + Len}.
 
-handle_app_recv_form_data(App, Env, Options, State) ->
-    ContentType = psycho:env_val(content_type, Env),
-    handle_recv_form_data_type(ContentType, App, setenv(Env, State), Options).
-
-handle_recv_form_data_type("application/x-www-form-urlencoded",
-                           App, State, Options) ->
-    Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
-    RecvResult = recv_remaining(Timeout, State),
-    handle_recv_urlencoded_form_data(RecvResult, App, State);
-handle_recv_form_data_type(ContentType, _App, State, _Options) ->
-    respond(internal_error("Unsupported content type"), State),
-    error({form_data_content_type, ContentType}).
-
-internal_error() ->
-    internal_error("Server error").
-
-internal_error(Msg) ->
-    {?status_internal_server_error, [{"Content-Type", "text/plain"}], Msg}.
-
-handle_recv_urlencoded_form_data({ok, Data}, App, #state{env=Env}=State) ->
-    DecodedData = decode_urlencoded_form_data(Data),
-    AppResult = (catch psycho:call_app_with_data(App, Env, DecodedData)),
-    error_on_recv_body_after_eof(true, AppResult, App),
-    handle_app_result(AppResult, increment_recv_len(size(Data), State));
-handle_recv_urlencoded_form_data({error, Error}, _App, _State) ->
-    {stop, {recv_error, Error}}.
-
-decode_urlencoded_form_data(Data) ->
-    psycho_util:parse_query_string(Data).
-
-recv_remaining(Timeout, State) ->
-    recv(remaining_len(State), Timeout, State).
-
-remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
-    Total - Received.
+%%%===================================================================
+%%% Response
+%%%===================================================================
 
 respond({Status, Headers, Body}, State) ->
     respond(finalize_response(set_response(Status, Headers, Body, State))).
@@ -366,6 +417,10 @@ handle_body_iter(stop, _Sock, _Fun) ->
     ok;
 handle_body_iter({stop, Data}, Sock, _Fun) ->
     send_data(Sock, Data).
+
+%%%===================================================================
+%%% Finalize request
+%%%===================================================================
 
 close_or_keep_alive(#state{close=true}=S) -> close(S);
 close_or_keep_alive(State) ->
