@@ -2,7 +2,7 @@
 
 -export([call_app/2, call_app_with_data/3,
          priv_dir/0,
-         env_val/2, env_val/3,
+         env_val/2, env_val/3, set_env/3,
          env_header/2, env_header/3,
          parsed_request_path/1]).
 
@@ -33,6 +33,9 @@ env_val(Name, Env, Default) ->
         {_, Value} -> Value;
         _ -> Default
     end.
+
+set_env(Name, Value, Env) ->
+    [{Name, Value}|lists:keydelete(Name, 1, Env)].
 
 env_header(Name, Env) ->
     env_header(Name, Env, undefined).
