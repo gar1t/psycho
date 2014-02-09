@@ -22,7 +22,7 @@
 -define(is_resp_body_binary(S), is_binary(S#state.resp_body)).
 
 -define(IDLE_TIMEOUT, 300000).
--define(RECV_MAX, 1000000).
+-define(DEFAULT_RECV_LEN, 32768).
 
 start_link(Sock, App) ->
     proc:start_link(?MODULE, [Sock, App]).
@@ -144,68 +144,90 @@ dispatch_to_app(#state{app=App, env=Env}=State) ->
     handle_app_result(catch psycho:call_app(App, Env), State).
 
 handle_app_result({{I, _}=Status, Headers, Body}, State) when is_integer(I) ->
-    respond(Status, Headers, Body, State);
+    respond({Status, Headers, Body}, State);
 handle_app_result({{I, _}=Status, Headers}, State) when is_integer(I) ->
-    respond(Status, Headers, State);
-handle_app_result({recv_body, Length, App, Env}, State) ->
-    handle_recv(
-      recv(safe_recv_len(Length, State), ?IDLE_TIMEOUT, State),
-      App, setenv(Env, State));
-handle_app_result({recv_body, Length, Timeout, App, Env}, State) ->
-    handle_recv(
-      recv(safe_recv_len(Length, State), Timeout, State),
-      App, setenv(Env, State));
+    respond({Status, Headers, []}, State);
+handle_app_result({recv_body, App, Env}, State) ->
+    handle_app_recv_body(App, Env, [], State);
+handle_app_result({recv_body, App, Env, Options}, State) ->
+    handle_app_recv_body(App, Env, Options, State);
 handle_app_result({recv_form_data, App, Env}, State) ->
-    handle_recv_form_data(
-      recv_remaining(?IDLE_TIMEOUT, State),
-      App, setenv(Env, State));
-handle_app_result({recv_form_data, Timeout, App, Env}, State) ->
-    handle_recv_form_data(
-      recv_remaining(Timeout, State),
-      App, setenv(Env, State));
+    handle_app_recv_form_data(App, Env, [], State);
+handle_app_result({recv_form_data, App, Env, Options}, State) ->
+    handle_app_recv_form_data(App, Env, Options, State);
 handle_app_result({'EXIT', Err}, State) ->
-    respond(?status_internal_server_error, [], State),
+    respond(internal_error(), State),
     error({app_error, Err});
 handle_app_result(Other, State) ->
-    respond(?status_internal_server_error, [], State),
+    respond(internal_error(), State),
     error({bad_return_value, Other}).
+
+handle_app_recv_body(App, Env, Options, State) ->
+    Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
+    Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    handle_recv(
+      recv(safe_recv_len(Length, State), Timeout, State),
+      App, setenv(Env, State)).
+
+setenv(Env, S) -> S#state{env=Env}.
 
 safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
     min(Requested, Total - Received).
 
-setenv(Env, S) ->
-    S#state{env=Env}.
-
-recv(Length, _Timeout, _State) when Length >= ?RECV_MAX ->
-    error({recv_len, Length});
 recv(Length, Timeout, #state{sock=Sock}) when Length > 0 ->
     gen_tcp:recv(Sock, Length, Timeout);
 recv(_Length, _Timeout, _State) ->
     {ok, <<>>}.
 
-handle_recv({ok, <<>>}, App, #state{env=Env}=State) ->
-    handle_app_result(
-      error_on_recv_body_after_eof(
-        catch psycho:call_app_with_data(App, Env, <<>>), App),
-      State);
 handle_recv({ok, Data}, App, #state{env=Env}=State) ->
-    handle_app_result(
-      catch psycho:call_app_with_data(App, Env, Data),
-      increment_recv_len(size(Data), State));
+    AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
+    error_on_recv_body_after_eof(is_eof(Data), AppResult, App),
+    handle_app_result(AppResult, increment_recv_len(size(Data), State));
 handle_recv({error, Error}, _App, _State) ->
     {stop, {recv_error, Error}}.
 
-error_on_recv_body_after_eof({recv_body, _, _, _}, App) ->
+is_eof(<<>>) -> true;
+is_eof(_) -> false.
+
+error_on_recv_body_after_eof(false, _Result, _App) -> ok;
+error_on_recv_body_after_eof(true, {recv_body, _, _, _}, App) ->
     error({recv_body_after_eof, App});
-error_on_recv_body_after_eof({recv_body, _, _, _, _}, App) ->
+error_on_recv_body_after_eof(true, {recv_body, _, _, _, _}, App) ->
     error({recv_body_after_eof, App});
-error_on_recv_body_after_eof(Result, _App) ->
-    Result.
+error_on_recv_body_after_eof(true, _Result, _App) -> ok.
 
 increment_recv_len(I, #state{recv_len=Len}=S) ->
     S#state{recv_len=I + Len}.
 
--define(zero_len(Len), Len == undefined orelse Len == 0).
+handle_app_recv_form_data(App, Env, Options, State) ->
+    ContentType = psycho:env_val(content_type, Env),
+    handle_recv_form_data_type(ContentType, App, setenv(Env, State), Options).
+
+handle_recv_form_data_type("application/x-www-form-urlencoded",
+                           App, State, Options) ->
+    Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    RecvResult = recv_remaining(Timeout, State),
+    handle_recv_urlencoded_form_data(RecvResult, App, State);
+handle_recv_form_data_type(ContentType, _App, State, _Options) ->
+    respond(internal_error("Unsupported content type"), State),
+    error({form_data_content_type, ContentType}).
+
+internal_error() ->
+    internal_error("Server error").
+
+internal_error(Msg) ->
+    {?status_internal_server_error, [{"Content-Type", "text/plain"}], Msg}.
+
+handle_recv_urlencoded_form_data({ok, Data}, App, #state{env=Env}=State) ->
+    DecodedData = decode_urlencoded_form_data(Data),
+    AppResult = (catch psycho:call_app_with_data(App, Env, DecodedData)),
+    error_on_recv_body_after_eof(true, AppResult, App),
+    handle_app_result(AppResult, increment_recv_len(size(Data), State));
+handle_recv_urlencoded_form_data({error, Error}, _App, _State) ->
+    {stop, {recv_error, Error}}.
+
+decode_urlencoded_form_data(Data) ->
+    psycho_util:parse_query_string(Data).
 
 recv_remaining(Timeout, State) ->
     recv(remaining_len(State), Timeout, State).
@@ -213,22 +235,7 @@ recv_remaining(Timeout, State) ->
 remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
     Total - Received.
 
-handle_recv_form_data({ok, Data}, App, #state{env=Env}=State) ->
-    ContentType = env_val(content_type, State),
-    Decoded = decode_form_data(ContentType, Data),
-    handle_app_result(
-      catch psycho:call_app_with_data(App, Env, Decoded),
-      increment_recv_len(size(Data), State)).
-
-decode_form_data("application/x-www-form-urlencoded", Data) ->
-    psycho_util:parse_query_string(Data);
-decode_form_data(Other, _Data) ->
-    error({unknown_form_data_type, Other}).
-
-respond(Status, Headers, State) ->
-    respond(Status, Headers, [], State).
-
-respond(Status, Headers, Body, State) ->
+respond({Status, Headers, Body}, State) ->
     respond(finalize_response(set_response(Status, Headers, Body, State))).
 
 set_response(Status, Headers, Body, S) ->

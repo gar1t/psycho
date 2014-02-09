@@ -209,60 +209,29 @@ data from the request body.
 
 At a minimum, the supported values should be:
 
-    {recv_body, Length, App} | {recv_body, Length, Timeout, App}
-	Length :: integer()
-	Callback :: fun((Data, Env) -> Result)
+    {recv_body, App, Env} | {recv_body, App, Env, Options}
+	App = fun(Data, Env) -> Result
+	Env = env()
+	Options = [option()]
+	option() = {recv_size, integer()}
+	         | {recv_timeout, integer()}
 	Data :: iolist()
 
 And, very useful:
 
-    {recv_form_data, App} | {recv_form_data, Timeout, App}
-	Callback :: fun((Data, Env) -> Result)
-	Data :: proplist()
+    {recv_form_data, App, Env} | {recv_form_data, App, Env, Options}
+	App = fun(Data, Env) -> Result
+	Env = env()
+	Options = [option()]
+	option() = {recv_size, integer()}
+	         | {recv_timeout, integer()}
+			 | {part_handler, PartHandler}
+	PartHandler = fun(Part, Env) -> PartHandlerResult
+	PartHandlerResult = {stop, Reason, Env} | {continue, Part, Env}
+	Data :: iolist()
 
-UPDATE: This is broken, and unfortunately it's very subtle. If psycho provides
-the Env to the recv callback app, it will provide the original Env, which is
-not necessarily the the Env used by the app requsting the callback -- its
-likely different in fact.
-
-Consider this:
-
-     Psycho(Env1) -> App 1(Env2) -> App 2(Env3)
-        |   ^                              |
-       (2)  +---------(1) recv_data -------+
-		|
-        v
-     Callback
-
-In the call chain, the apps can modify Env and the App 2 asks for data. But
-Psycho doesn't see Env3 - it only has Env1, which is uses in the
-Callback. Broken!
-
-I think the right API here - the only possible API, is to require Env in the
-recv result tuple. So the result should look like this:
-
-    {recv_body, Length, App, Env} | {recv_body, Length, Timeout, App, Env}
-
-or this:
-
-    {recv_form_data, App, Env} | {recv_form_data, Timeout, App, Env}
-
-Alternatively, we could skip Env altogether in the callback, so the app
-signature is now:
-
-	Callback :: fun((Data) -> Result)
-
-If the app needed something from the Env - or the Env itself, it would have to
-use a closure:
-
-    app(Env) ->
-	    {recv_form_data, fun(Data) -> handle_data(Data, Env) end}
-
-While this is simpler, it looses the "application" call pattern, which is
-strongly associated with an Env argument. It's as if the response protocol dies
-here and we officially lose the Env. Let's go with the first approach - even
-though it places additional burden on the original app and in many cases the
-Env won't be needed, it's more consistent with the standard API.
+The later should "application/x-www-form-urlencoded" and "multipart/form-data"
+content types.
 
 #### wsgi.errors
 
@@ -481,3 +450,102 @@ pipeline of apps, including the provided app as well as any middleware.
 
 This took a while to sort through. I'm inclined to provide a similar facility
 within Psycho, but make it a bit more transparent.
+
+## Multipart Messages
+
+When a form is submitted with content type = "multipart/form-data;
+boundary=---xxxx" what support do we give app developers?
+
+Currently, we support recv_body, which returns chunks of the body to a
+specified callback. These chunks are currently opaque binaries to psycho, and
+stop up to the number of bytes specified by the content length request header.
+
+Apps get this callback:
+
+    app(Data, Env) -> Result
+
+In the case where content type is multipart/form-data, a chunk may contain or
+more parts, or no parts, if the chunk is strictly of a previous part.
+
+Here's an example, which shows chunks and parts overlapping.
+
+      +---  ---abcde
+	  |     Content-Disposition: form-data; name="name"
+	Chunk
+      |     Garrett Smith
+	  |     ---abcde
+	  +---  Content-Disposition: form-data; name="email"
+	  |
+	Chunk   g@rre/tt
+	  |     ---abcde
+	  |     Content-Disposition: form-data; name="file1"; filename="Makefile"
+	  |     Content-Type: application/octet-stream
+	  +---
+	  |     ...begin file...
+	Chunk
+	  |
+	  |
+	  +---
+	  |
+	Chunk
+	  |
+	  |
+	  +---
+	  |
+	Chunk
+	  |     ---abcde
+	  +---
+
+Boundaries indicate both the start and the end of a part.
+
+Given a chunk, we should be able to enuermate:
+
+- Data preceding the first boundary indicator (leading data)
+- One or more parts
+- Data following the last boundary indiator (trailing data)
+
+----
+
+What if we made recv_form_data smarter -- now it knows about
+"multipart/form-data" content type, in addition to
+"application/x-www-form-urlencoded".
+
+    app(Env) ->
+	    {recv_form_data, fun handle_data/2, Env}.
+
+    %% Note this requires a default chunk size that the server uses.
+	%% We could make this a part of the result tuple, but this is getting
+	%% complicated.
+	%%
+	%% What about an options proplist?
+
+    handle_data(Data, _Env) ->
+	    do_something_with_data(Data),
+		{{302, "See Other"}, [{"Location", "/"}]}.
+
+This would be fine, if it weren't for the possibility of memory overruns from
+huge files. We need a way to handle received chunks as they arrive and not save
+these in the final Data proplist.
+
+How?
+
+What if, in addition to taking an App element in recv_form_data, we supported a
+two tuple:
+
+    app(Env) ->
+        {recv_form_data, {fun handle_multipart/2, fun handle_data/2}, Env}.
+
+Or:
+
+	app(Env) ->
+	    {recv_form_data, App, Env, [{part_handler, handle_part/2}]}.
+
+
+Or:
+
+	app(Env) ->
+	    {recv_form_data, App, Env, [{part_handler, handle_part/2},
+		                            {recv_timeout, 60000}
+									{recv_size, 10240]}.
+
+I definitely like this options patter - much easier to scale.
