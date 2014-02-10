@@ -7,7 +7,8 @@ run() ->
     test_ensure_parsed_request_path(),
     test_routes(),
     test_crypto(),
-    test_validate().
+    test_validate(),
+    test_multipart().
 
 test_parse_request_path() ->
     io:format("parse_request_path: "),
@@ -152,3 +153,30 @@ test_validate() ->
     {ok, _} = V([{"foo", "FOO"}], [{"foo", [{min_length, 3}]}]),
 
     io:format("OK~n").
+
+test_multipart() ->
+    io:format("multipart: "),
+
+    Boundary = <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI">>,
+    Data =
+        [<<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
+         <<"t-Disposition: form-data; name=\"name\"\r\n\r\nHello\r\n">>,
+         <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
+         <<"t-Disposition: form-data; name=\"awesome\"\r\n\r\non\r\n">>,
+         <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
+         <<"t-Disposition: form-data; name=\"file1\"; filename">>,
+         <<"=\"file1\"\r\nContent-Type: application/octet-stream">>,
+         <<"\r\n\r\nThis is\nfile 1.\n\r\n------WebKitFormBoundaryDr">>,
+         <<"6DS6tqR3sKzPnI\r\nContent-Disposition: form-data; ">>,
+         <<"name=\"file2\"; filename=\"file2\"\r\nContent-Type: ap">>,
+         <<"plication/octet-stream\r\n\r\nThis\nis\nfile 2.\n\r\n----">>,
+         <<"--WebKitFormBoundaryDr6DS6tqR3sKzPnI--\r\n">>],
+
+    MP = apply_data(Data, psycho_multipart:new(Boundary)),
+    io:format("~n~n~p~n~n", [psycho_multipart:form_data(MP)]),
+
+    io:format("OK~n").
+
+apply_data([Data|Rest], MP) ->
+    apply_data(Rest, psycho_multipart:data(Data, MP));
+apply_data([], MP) -> MP.

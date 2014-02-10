@@ -164,13 +164,13 @@ handle_app_result({{I, _}=Status, Headers, Body}, State) when is_integer(I) ->
 handle_app_result({{I, _}=Status, Headers}, State) when is_integer(I) ->
     respond({Status, Headers, []}, State);
 handle_app_result({recv_body, App, Env}, State) ->
-    handle_app_recv_body(App, Env, [], State);
+    handle_app_recv_body(App, [], setenv(Env, State));
 handle_app_result({recv_body, App, Env, Options}, State) ->
-    handle_app_recv_body(App, Env, Options, State);
+    handle_app_recv_body(App, Options, setenv(Env, State));
 handle_app_result({recv_form_data, App, Env}, State) ->
-    handle_app_recv_form_data(App, Env, [], State);
+    handle_app_recv_form_data(App, [], setenv(Env, State));
 handle_app_result({recv_form_data, App, Env, Options}, State) ->
-    handle_app_recv_form_data(App, Env, Options, State);
+    handle_app_recv_form_data(App, Options, setenv(Env, State));
 handle_app_result({'EXIT', Err}, State) ->
     respond(internal_error(), State),
     error({app_error, Err});
@@ -178,40 +178,41 @@ handle_app_result(Other, State) ->
     respond(internal_error(), State),
     error({bad_return_value, Other}).
 
+setenv(Env, S) -> S#state{env=Env}.
+
 %%%===================================================================
 %%% recv_body support
 %%%===================================================================
 
-handle_app_recv_body(App, Env, Options, State) ->
+handle_app_recv_body(App, Options, State) ->
     Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
-    handle_recv(
-      recv(safe_recv_len(Length, State), Timeout, State),
-      App, setenv(Env, State)).
+    Received = safe_recv(Length, Timeout, State),
+    handle_recv_body(Received, App, State).
 
-handle_recv({ok, Data}, App, #state{env=Env}=State) ->
+handle_recv_body({ok, Data}, App, #state{env=Env}=State) ->
     AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
     error_on_recv_body_after_eof(is_eof(Data), AppResult, App),
     handle_app_result(AppResult, increment_recv_len(size(Data), State));
-handle_recv({error, Error}, _App, _State) ->
+handle_recv_body({error, Error}, _App, _State) ->
     {stop, {recv_error, Error}}.
 
 %%%===================================================================
 %%% recv_form_data support
 %%%===================================================================
 
-handle_app_recv_form_data(App, Env, Options, State) ->
-    ContentType = psycho:env_val(content_type, Env),
-    handle_app_recv_form_data_type(
-      ContentType, App, setenv(Env, State), Options).
+handle_app_recv_form_data(App, Options, State) ->
+    ContentType = env_val(content_type, State),
+    handle_app_recv_form_data(ContentType, App, Options, State).
 
-handle_app_recv_form_data_type(
-  "application/x-www-form-urlencoded", App, State, Options) ->
-    handle_app_recv_urlencoded_data(App, State, Options);
-handle_app_recv_form_data_type(
-  "multipart/form-data;"++_, App, State, Options) ->
-    handle_app_recv_multipart(App, State, Options);
-handle_app_recv_form_data_type(ContentType, _App, State, _Options) ->
+-define(URLENCODED, "application/x-www-form-urlencoded").
+-define(MULTIPART, "multipart/form-data;").
+
+handle_app_recv_form_data(?URLENCODED, App, Options, State) ->
+    handle_app_recv_urlencoded_data(App, Options, State);
+handle_app_recv_form_data(?MULTIPART ++ TypeParams, App, Options, State) ->
+    handle_app_recv_multipart(TypeParams, App, Options, State);
+handle_app_recv_form_data(ContentType, _App, _Options, State) ->
     respond(internal_error("Unsupported content type"), State),
     error({form_data_content_type, ContentType}).
 
@@ -219,14 +220,14 @@ handle_app_recv_form_data_type(ContentType, _App, State, _Options) ->
 %%% urlencoded form data
 %%%===================================================================
 
-handle_app_recv_urlencoded_data(App, State, Options) ->
+handle_app_recv_urlencoded_data(App, Options, State) ->
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
-    RecvResult = recv_remaining(Timeout, State),
-    handle_recv_urlencoded_form_data(RecvResult, App, State).
+    Received = recv_remaining(Timeout, State),
+    handle_recv_urlencoded_form_data(Received, App, State).
 
 handle_recv_urlencoded_form_data({ok, Data}, App, #state{env=Env}=State) ->
-    DecodedData = decode_urlencoded_form_data(Data),
-    AppResult = (catch psycho:call_app_with_data(App, Env, DecodedData)),
+    FormData = decode_urlencoded_form_data(Data),
+    AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
     error_on_recv_body_after_eof(true, AppResult, App),
     handle_app_result(AppResult, increment_recv_len(size(Data), State));
 handle_recv_urlencoded_form_data({error, Error}, _App, _State) ->
@@ -239,29 +240,59 @@ decode_urlencoded_form_data(Data) ->
 %%% multipart form data
 %%%===================================================================
 
-handle_app_recv_multipart(_App, State, _Options) ->
-    respond(internal_error("TODO: we'll get there"), State),
-    error({"Implement multipart form data"}).
+handle_app_recv_multipart(TypeParams, App, Options, State) ->
+    Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
+    Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    MP = psycho_multipart:new(boundary_param(TypeParams, State)),
+    Recv = safe_recv_fun(Length, Timeout),
+    handle_recv_multipart(Recv(State), Recv, MP, App, State).
+
+-define(BOUNDARY_PATTERN, <<"[; +]boundary=(.*?)(;|$)">>).
+
+boundary_param(Str, State) ->
+    handle_boundary_re(
+      re:run(Str, ?BOUNDARY_PATTERN, [{capture, [1], binary}]),
+      State).
+
+handle_boundary_re({match, [Boundary]}, _State) -> Boundary;
+handle_boundary_re(nomatch, State) -> 
+    respond(internal_error("Invalid multipart content type"), State).
+
+safe_recv_fun(Length, Timeout) ->
+    fun(State) -> safe_recv(Length, Timeout, State) end.
+
+handle_recv_multipart({ok, <<>>}, _Recv, MP, App, #state{env=Env}=State) ->
+    FormData = psycho_multipart:form_data(MP),
+    AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
+    error_on_recv_body_after_eof(true, AppResult, App),
+    handle_app_result(AppResult, State);
+handle_recv_multipart({ok, Data}, Recv, MP, App, State) ->
+    NewMP = psycho_multipart:data(Data, MP),
+    NewState = increment_recv_len(size(Data), State),
+    handle_recv_multipart(Recv(NewState), Recv, NewMP, App, NewState);
+handle_recv_multipart({error, Error}, _Recv, _MP, _App, _State) ->
+    {stop, {recv_error, Error}}.
 
 %%%===================================================================
 %%% recv related general/shared functions
 %%%===================================================================
 
+safe_recv(Length, Timeout, State) ->
+    recv(safe_recv_len(Length, State), Timeout, State).
+
 safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
     min(Requested, Total - Received).
-
-recv_remaining(Timeout, State) ->
-    recv(remaining_len(State), Timeout, State).
-
-remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
-    Total - Received.
 
 recv(Length, Timeout, #state{sock=Sock}) when Length > 0 ->
     gen_tcp:recv(Sock, Length, Timeout);
 recv(_Length, _Timeout, _State) ->
     {ok, <<>>}.
 
-setenv(Env, S) -> S#state{env=Env}.
+recv_remaining(Timeout, State) ->
+    recv(remaining_len(State), Timeout, State).
+
+remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
+    Total - Received.
 
 internal_error() ->
     internal_error("Server error").
