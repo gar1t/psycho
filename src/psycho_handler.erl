@@ -192,8 +192,8 @@ handle_app_recv_body(App, Options, State) ->
 
 handle_recv_body({ok, Data}, App, #state{env=Env}=State) ->
     AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
-    error_on_recv_body_after_eof(is_eof(Data), AppResult, App),
-    handle_app_result(AppResult, increment_recv_len(size(Data), State));
+    error_on_recv_after_eof(is_eof(Data), AppResult, App),
+    handle_app_result(AppResult, increment_recv_len(Data, State));
 handle_recv_body({error, Error}, _App, _State) ->
     {stop, {recv_error, Error}}.
 
@@ -228,8 +228,8 @@ handle_app_recv_urlencoded_data(App, Options, State) ->
 handle_recv_urlencoded_form_data({ok, Data}, App, #state{env=Env}=State) ->
     FormData = decode_urlencoded_form_data(Data),
     AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
-    error_on_recv_body_after_eof(true, AppResult, App),
-    handle_app_result(AppResult, increment_recv_len(size(Data), State));
+    error_on_recv_after_eof(AppResult, App),
+    handle_app_result(AppResult, increment_recv_len(Data, State));
 handle_recv_urlencoded_form_data({error, Error}, _App, _State) ->
     {stop, {recv_error, Error}}.
 
@@ -243,7 +243,9 @@ decode_urlencoded_form_data(Data) ->
 handle_app_recv_multipart(TypeParams, App, Options, State) ->
     Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
-    MP = psycho_multipart:new(boundary_param(TypeParams, State)),
+    Boundary = boundary_param(TypeParams, State),
+    error_on_bad_multipart_recv_length(Length, Boundary),
+    MP = psycho_multipart:new(Boundary, 'TODO_Callback', 'TODO_Cb_Data'),
     Recv = safe_recv_fun(Length, Timeout),
     handle_recv_multipart(Recv(State), Recv, MP, App, State).
 
@@ -255,23 +257,38 @@ boundary_param(Str, State) ->
       State).
 
 handle_boundary_re({match, [Boundary]}, _State) -> Boundary;
-handle_boundary_re(nomatch, State) -> 
+handle_boundary_re(nomatch, State) ->
     respond(internal_error("Invalid multipart content type"), State).
+
+error_on_bad_multipart_recv_length(Length, Boundary) ->
+    case Length < size(Boundary) of
+        true -> error({bad_multipart_recv_length, Length});
+        false -> ok
+    end.
 
 safe_recv_fun(Length, Timeout) ->
     fun(State) -> safe_recv(Length, Timeout, State) end.
 
-handle_recv_multipart({ok, <<>>}, _Recv, MP, App, #state{env=Env}=State) ->
-    FormData = psycho_multipart:form_data(MP),
-    AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
-    error_on_recv_body_after_eof(true, AppResult, App),
-    handle_app_result(AppResult, State);
+handle_recv_multipart({ok, <<>>}, _Recv, MP, App, State) ->
+    handle_recv_multipart_finished(MP, App, State);
 handle_recv_multipart({ok, Data}, Recv, MP, App, State) ->
-    NewMP = psycho_multipart:data(Data, MP),
-    NewState = increment_recv_len(size(Data), State),
-    handle_recv_multipart(Recv(NewState), Recv, NewMP, App, NewState);
+    handle_recv_multipart_data(Data, Recv, MP, App, State);
 handle_recv_multipart({error, Error}, _Recv, _MP, _App, _State) ->
     {stop, {recv_error, Error}}.
+
+handle_recv_multipart_finished(MP, App, #state{env=Env}=State) ->
+    FormData = psycho_multipart:form_data(MP),
+    AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
+    error_on_recv_after_eof(AppResult, App),
+    handle_app_result(AppResult, State).
+
+handle_recv_multipart_data(Data, Recv, MP, App, State) ->
+    handle_updated_multipart(
+      psycho_multipart:data(Data, MP),
+      Recv, App, increment_recv_len(Data, State)).
+
+handle_updated_multipart(MP, Recv, App, State) ->
+    handle_recv_multipart(Recv(State), Recv, MP, App, State).
 
 %%%===================================================================
 %%% recv related general/shared functions
@@ -303,15 +320,26 @@ internal_error(Msg) ->
 is_eof(<<>>) -> true;
 is_eof(_) -> false.
 
-error_on_recv_body_after_eof(false, _Result, _App) -> ok;
-error_on_recv_body_after_eof(true, {recv_body, _, _, _}, App) ->
-    error({recv_body_after_eof, App});
-error_on_recv_body_after_eof(true, {recv_body, _, _, _, _}, App) ->
-    error({recv_body_after_eof, App});
-error_on_recv_body_after_eof(true, _Result, _App) -> ok.
+error_on_recv_after_eof(Result, App) ->
+    error_on_recv_after_eof(true, Result, App).
 
-increment_recv_len(I, #state{recv_len=Len}=S) ->
-    S#state{recv_len=I + Len}.
+error_on_recv_after_eof(true, Result, App) ->
+    error_on_recv(Result, App);
+error_on_recv_after_eof(false, _Result, _App) ->
+    ok.
+
+error_on_recv({recv_body, _, _}, App) ->
+    error({recv_body_after_eof, App});
+error_on_recv({recv_body, _, _, _}, App) ->
+    error({recv_body_after_eof, App});
+error_on_recv({recv_form_data, _, _}, App) ->
+    error({recv_form_data_after_eof, App});
+error_on_recv({recv_form_data, _, _, _}, App) ->
+    error({recv_form_data_after_eof, App});
+error_on_recv(_, _App) -> ok.
+
+increment_recv_len(Data, #state{recv_len=Received}=S) ->
+    S#state{recv_len=size(Data) + Received}.
 
 %%%===================================================================
 %%% Response
