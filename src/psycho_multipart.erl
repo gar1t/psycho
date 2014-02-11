@@ -1,18 +1,21 @@
 -module(psycho_multipart).
 
--export([new/1, new/2, data/2, form_data/1]).
+-export([new/1, new/3, data/2, form_data/1, user_data/1]).
 
--record(mp, {boundary_delim, parts, headers, acc}).
+-record(mp, {boundary_delim, parts, name, headers, acc, cb, cb_data}).
 
 new(Boundary) ->
-    new(Boundary, {undefined, undefined}).
+    new(Boundary, undefined, undefined).
 
-new(Boundary, {_Callback, _Data}) when is_binary(Boundary) ->
+new(Boundary, Callback, Data) when is_binary(Boundary) ->
     #mp{
        boundary_delim=boundary_delim(Boundary),
        parts=[],
+       name=undefined,
        headers=pending,
-       acc=[]}.
+       acc=[],
+       cb=Callback,
+       cb_data=Data}.
 
 boundary_delim(Boundary) ->
     <<"--", Boundary/binary>>.
@@ -51,6 +54,8 @@ try_headers(Window, Data, #mp{headers=pending}=MP) ->
     handle_match_headers(
       binary:match(Window, ?HEADERS_DELIM),
       Window, Data, MP);
+try_headers(_Window, _Data, #mp{headers=skipping}=MP) ->
+    MP;
 try_headers(_Window, Data, #mp{acc=Acc}=MP) ->
     MP#mp{acc=[Data|Acc]}.
 
@@ -60,10 +65,14 @@ handle_match_headers({Pos, Len}, Window, _Data, MP) ->
     <<Prev:Pos/binary, _:Len/binary, Next/binary>> = Window,
     start_body(Next, finalize_headers(Prev, MP)).
 
-finalize_headers(Data, #mp{acc=Acc}=MP) ->
-    Raw = iolist_to_binary(lists:reverse([Data|pop_last(Acc)])),
+finalize_headers(Data, MP) ->
+    Raw = raw_headers(Data, MP),
     Headers = parse_headers(Raw),
-    MP#mp{headers=Headers}.
+    Name = form_data_name(Headers),
+    notify_headers(Name, Headers, MP).
+
+raw_headers(LastData, #mp{acc=Acc}) ->
+    iolist_to_binary(lists:reverse([LastData|pop_last(Acc)])).
 
 parse_headers(<<"\r\n", Raw/binary>>) ->
     [parse_header(Part) || Part <- split_headers(Raw)];
@@ -81,13 +90,30 @@ parse_header(Raw) ->
 header_val(<<" ", Val/binary>>) -> binary_to_list(Val);
 header_val(Val) -> binary_to_list(Val).
 
+notify_headers(Name, Headers, #mp{cb=undefined}=MP) ->
+    MP#mp{name=Name, headers=Headers};
+notify_headers(Name, Headers, #mp{cb=Callback, cb_data=Data}=MP) ->
+    Result = Callback({part, Name, Headers}, Data),
+    handle_part_cb(Result, Name, Headers, MP).
+
+handle_part_cb({continue, Data}, Name, Headers, MP) ->
+    MP#mp{name=Name, headers=Headers, cb_data=Data};
+handle_part_cb({continue, {Name, Headers}, Data}, _, _, MP) ->
+    MP#mp{name=Name, headers=Headers, cb_data=Data};
+handle_part_cb({skip, Data}, Name, _, MP) ->
+    MP#mp{name=Name, headers=skipping, cb_data=Data}.
+
 start_body(Data, MP) -> MP#mp{acc=[Data]}.
 
-add_cur(#mp{headers=Headers, acc=Acc, parts=Parts}=MP) ->
-    Name = form_data_name(Headers),
+add_cur(#mp{headers=skipping}=MP) ->
+    reset_part(MP);
+add_cur(#mp{name=Name, headers=Headers, acc=Acc, parts=Parts}=MP) ->
     Body = finalize_body(Acc),
-    Part = {Name, Headers, Body},
-    MP#mp{parts=[Part|Parts], headers=pending, acc=[]}.
+    Part = {Name, {Headers, Body}},
+    reset_part(MP#mp{parts=[Part|Parts]}).
+
+reset_part(MP) ->
+    MP#mp{name=undefined, headers=pending, acc=[]}.
 
 -define(FORM_DATA_NAME_RE, <<"form-data; *name=\"(.*?)\"">>).
 
@@ -111,8 +137,8 @@ strip_trailing_crlf(Bin) ->
         _ -> Bin
     end.
 
-new_part(Data, MP) ->
-    try_headers(Data, MP).
+new_part(Data, MP) -> try_headers(Data, MP).
 
-form_data(#mp{parts=Parts}) ->
-    lists:reverse(Parts).
+form_data(#mp{parts=Parts}) -> lists:reverse(Parts).
+
+user_data(#mp{cb_data=Data}) -> Data.

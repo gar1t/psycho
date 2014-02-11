@@ -157,10 +157,18 @@ test_validate() ->
 test_multipart() ->
     io:format("multipart: "),
 
-    Boundary = <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI">>,
+    New = fun(Boundary) -> psycho_multipart:new(Boundary) end,
+    New3 =
+        fun(Boundary, Callback, Data) ->
+                psycho_multipart:new(Boundary, Callback, Data)
+        end,
+    FormData = fun(MP) -> psycho_multipart:form_data(MP) end,
+    UserData = fun(MP) -> psycho_multipart:user_data(MP) end,
+
+    Boundary = <<"----WebKitFormBoundaryDr6DS6tqR3sKzPnI">>,
     Data =
         [<<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
-         <<"t-Disposition: form-data; name=\"name\"\r\n\r\nHello\r\n">>,
+         <<"t-Disposition: form-data; name=\"name\"\r\n\r\nBob\r\n">>,
          <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
          <<"t-Disposition: form-data; name=\"awesome\"\r\n\r\non\r\n">>,
          <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
@@ -172,8 +180,107 @@ test_multipart() ->
          <<"plication/octet-stream\r\n\r\nThis\nis\nfile 2.\n\r\n----">>,
          <<"--WebKitFormBoundaryDr6DS6tqR3sKzPnI--\r\n">>],
 
-    MP = apply_data(Data, psycho_multipart:new(Boundary)),
-    io:format("~n~n~p~n~n", [psycho_multipart:form_data(MP)]),
+    %% Handle all parts (default behavior with no callback)
+
+    All = apply_data(Data, New(Boundary)),
+
+    [{"name",
+      {[{"Content-Disposition","form-data; name=\"name\""}],
+       <<"Bob">>}},
+     {"awesome",
+      {[{"Content-Disposition","form-data; name=\"awesome\""}],
+       <<"on">>}},
+     {"file1",
+      {[{"Content-Disposition","form-data; name=\"file1\"; "
+         "filename=\"file1\""},
+        {"Content-Type","application/octet-stream"}],
+       <<"This is\nfile 1.\n">>}},
+     {"file2",
+      {[{"Content-Disposition","form-data; name=\"file2\"; "
+         "filename=\"file2\""},
+        {"Content-Type","application/octet-stream"}],
+       <<"This\nis\nfile 2.\n">>}}] = FormData(All),
+
+    %% Use part handler callback to skip the two files
+
+    SkipFilesHandler =
+        fun({part, Name, _Headers}, Acc) ->
+                case Name of
+                    "file1" -> {skip, ["skipping file1"|Acc]};
+                    "file2" -> {skip, ["skipping file2"|Acc]};
+                    _ -> {continue, ["keeping " ++ Name|Acc]}
+                end
+        end,
+    SkipFiles = apply_data(Data, New3(Boundary, SkipFilesHandler, [])),
+
+    [{"name",
+      {[{"Content-Disposition","form-data; name=\"name\""}],
+       <<"Bob">>}},
+     {"awesome",
+      {[{"Content-Disposition","form-data; name=\"awesome\""}],
+       <<"on">>}}] = FormData(SkipFiles),
+
+    ["skipping file2",
+     "skipping file1",
+     "keeping awesome",
+     "keeping name"] = UserData(SkipFiles),
+
+    %% Use a part handler to keep only the two files
+
+    KeepFilesHandler =
+        fun({part, Name, _Headers}, Acc) ->
+                case Name of
+                    "file1" -> {continue, ["keeping file1"|Acc]};
+                    "file2" -> {continue, ["keeping file2"|Acc]};
+                    _ -> {skip, ["skipping " ++ Name|Acc]}
+                end
+        end,
+    KeepFiles = apply_data(Data, New3(Boundary, KeepFilesHandler, [])),
+
+    [{"file1",
+      {[{"Content-Disposition","form-data; name=\"file1\"; "
+         "filename=\"file1\""},
+        {"Content-Type","application/octet-stream"}],
+       <<"This is\nfile 1.\n">>}},
+     {"file2",
+      {[{"Content-Disposition","form-data; name=\"file2\"; "
+         "filename=\"file2\""},
+        {"Content-Type","application/octet-stream"}],
+       <<"This\nis\nfile 2.\n">>}}] = FormData(KeepFiles),
+
+    ["keeping file2",
+     "keeping file1",
+     "skipping awesome",
+     "skipping name"] = UserData(KeepFiles),
+
+    %% Use a part handler to modify a part
+
+    ModAwesomeHandler =
+        fun({part, Name, _Headers}, Acc) ->
+                case Name of
+                    "awesome" ->
+                        NewHeaders = [{"Content-Disposition",
+                                       "form-data; name=\"lame\""}],
+                        Msg = "renaming awesome to lame",
+                        {continue, {"lame", NewHeaders}, [Msg|Acc]};
+                    _ ->
+                        {skip, ["skipping " ++ Name|Acc]}
+                end
+        end,
+
+    ModAwesome = apply_data(Data, New3(Boundary, ModAwesomeHandler, [])),
+
+    [{"lame",
+      {[{"Content-Disposition","form-data; name=\"lame\""}],
+       <<"on">>}}] = FormData(ModAwesome),
+
+    ["skipping file2",
+     "skipping file1",
+     "renaming awesome to lame",
+     "skipping name"] = UserData(ModAwesome),
+
+    %% io:format("~p~n", [FormData(KeepName)]),
+    %% io:format("~p~n", [UserData(KeepName)]),
 
     io:format("OK~n").
 
