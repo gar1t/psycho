@@ -41,7 +41,13 @@ handle_boundary_match({Pos, Len}, Window, _Data, MP) ->
 
 finalize_part(<<>>, MP) -> MP;
 finalize_part(Data, MP) ->
-    add_part(try_headers(Data, MP#mp{last=undefined})).
+    add_part(notify_part_end(try_headers(Data, MP#mp{last=undefined}))).
+
+notify_part_end(#mp{headers=skipping}=MP) -> MP;
+notify_part_end(#mp{cb=undefined}=MP) -> MP;
+notify_part_end(#mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
+    Result = Callback({data, Name, <<>>}, CbData),
+    handle_data_cb(Result, <<>>, MP).
 
 try_headers(Data, MP) ->
     try_headers(Data, Data, MP).
@@ -55,7 +61,20 @@ try_headers(Window, Data, #mp{headers=pending}=MP) ->
 try_headers(_Window, _Data, #mp{headers=skipping}=MP) ->
     MP;
 try_headers(_Window, Data, MP) ->
-    push_data(Data, MP).
+    notify_data(Data, MP).
+
+notify_data(Data, #mp{cb=undefined}=MP) ->
+    push_data(Data, MP);
+notify_data(Data, #mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
+    Result = Callback({data, Name, Data}, CbData),
+    handle_data_cb(Result, Data, MP).
+
+handle_data_cb({continue, CbData}, Data, MP) ->
+    push_data(Data, MP#mp{cb_data=CbData});
+handle_data_cb({continue, Data, CbData}, _, MP) ->
+    push_data(Data, MP#mp{cb_data=CbData});
+handle_data_cb({skip, CbData}, _, MP) ->
+    MP#mp{cb_data=CbData}.
 
 push_data(Data, #mp{last=undefined}=MP) ->
     MP#mp{last=Data};
@@ -95,33 +114,35 @@ header_val(Val) -> binary_to_list(Val).
 
 notify_headers(Name, Headers, #mp{cb=undefined}=MP) ->
     MP#mp{name=Name, headers=Headers};
-notify_headers(Name, Headers, #mp{cb=Callback, cb_data=Data}=MP) ->
-    Result = Callback({part, Name, Headers}, Data),
+notify_headers(Name, Headers, #mp{cb=Callback, cb_data=CbData}=MP) ->
+    Result = Callback({part, Name, Headers}, CbData),
     handle_part_cb(Result, Name, Headers, MP).
 
-handle_part_cb({continue, Data}, Name, Headers, MP) ->
-    MP#mp{name=Name, headers=Headers, cb_data=Data};
-handle_part_cb({continue, {Name, Headers}, Data}, _, _, MP) ->
-    MP#mp{name=Name, headers=Headers, cb_data=Data};
-handle_part_cb({skip, Data}, Name, _, MP) ->
-    MP#mp{name=Name, headers=skipping, cb_data=Data}.
+handle_part_cb({continue, CbData}, Name, Headers, MP) ->
+    MP#mp{name=Name, headers=Headers, cb_data=CbData};
+handle_part_cb({continue, {Name, Headers}, CbData}, _, _, MP) ->
+    MP#mp{name=Name, headers=Headers, cb_data=CbData};
+handle_part_cb({skip, CbData}, Name, _, MP) ->
+    MP#mp{name=Name, headers=skipping, cb_data=CbData}.
 
 start_body(Data, MP) ->
     MP#mp{last=Data, acc=[]}.
 
 add_part(#mp{headers=skipping}=MP) ->
     reset_part(MP);
-add_part(#mp{name=Name, headers=Headers, parts=Parts}=MP) ->
+add_part(#mp{name=Name, headers=Headers}=MP) ->
     Body = finalize_body(MP),
     Part = {Name, {Headers, Body}},
-    reset_part(MP#mp{parts=[Part|Parts]}).
+    reset_part(add_part(Part, MP)).
+
+add_part(Part, #mp{parts=Parts}=MP) ->
+    MP#mp{parts=[Part|Parts]}.
 
 reset_part(MP) ->
     MP#mp{name=undefined, headers=pending, last=undefined, acc=[]}.
 
 finalize_body(#mp{last=Last, acc=Acc}) ->
-    LastTrimmed = strip_trailing_crlf(Last),
-    iolist_to_binary(lists:reverse([LastTrimmed|Acc])).
+    strip_trailing_crlf(iolist_to_binary(lists:reverse([Last|Acc]))).
 
 -define(FORM_DATA_NAME_RE, <<"form-data; *name=\"(.*?)\"">>).
 

@@ -203,14 +203,7 @@ test_multipart() ->
 
     %% Use part handler callback to skip the two files
 
-    SkipFilesHandler =
-        fun({part, Name, _Headers}, Acc) ->
-                case Name of
-                    "file1" -> {skip, ["skipping file1"|Acc]};
-                    "file2" -> {skip, ["skipping file2"|Acc]};
-                    _ -> {continue, ["keeping " ++ Name|Acc]}
-                end
-        end,
+    SkipFilesHandler = skip_handler(["file1", "file2"]),
     SkipFiles = apply_data(Data, New3(Boundary, SkipFilesHandler, [])),
 
     [{"name",
@@ -220,21 +213,18 @@ test_multipart() ->
       {[{"Content-Disposition","form-data; name=\"awesome\""}],
        <<"on">>}}] = FormData(SkipFiles),
 
-    ["skipping file2",
-     "skipping file1",
-     "keeping awesome",
-     "keeping name"] = UserData(SkipFiles),
+    [{keep,"name"},
+     {data,"name",<<"Bob\r\n">>},
+     {data,"name",<<>>},
+     {keep,"awesome"},
+     {data,"awesome",<<"on\r\n">>},
+     {data,"awesome",<<>>},
+     {skip,"file1"},
+     {skip,"file2"}] = lists:reverse(UserData(SkipFiles)),
 
     %% Use a part handler to keep only the two files
 
-    KeepFilesHandler =
-        fun({part, Name, _Headers}, Acc) ->
-                case Name of
-                    "file1" -> {continue, ["keeping file1"|Acc]};
-                    "file2" -> {continue, ["keeping file2"|Acc]};
-                    _ -> {skip, ["skipping " ++ Name|Acc]}
-                end
-        end,
+    KeepFilesHandler = skip_handler(["name", "awesome"]),
     KeepFiles = apply_data(Data, New3(Boundary, KeepFilesHandler, [])),
 
     [{"file1",
@@ -248,41 +238,59 @@ test_multipart() ->
         {"Content-Type","application/octet-stream"}],
        <<"This\nis\nfile 2.\n">>}}] = FormData(KeepFiles),
 
-    ["keeping file2",
-     "keeping file1",
-     "skipping awesome",
-     "skipping name"] = UserData(KeepFiles),
+    [{skip,"name"},
+     {skip,"awesome"},
+     {keep,"file1"},
+     {data,"file1",<<"This is\nfile 1.\n\r\n">>},
+     {data,"file1",<<>>},
+     {keep,"file2"},
+     {data,"file2",<<"This\nis\nfile 2.\n\r\n">>},
+     {data,"file2",<<>>}] = lists:reverse(UserData(KeepFiles)),
 
     %% Use a part handler to modify a part
 
-    ModAwesomeHandler =
-        fun({part, Name, _Headers}, Acc) ->
-                case Name of
-                    "awesome" ->
-                        NewHeaders = [{"Content-Disposition",
-                                       "form-data; name=\"lame\""}],
-                        Msg = "renaming awesome to lame",
-                        {continue, {"lame", NewHeaders}, [Msg|Acc]};
-                    _ ->
-                        {skip, ["skipping " ++ Name|Acc]}
-                end
-        end,
-
+    ModAwesomeHandler = rename_handler("awesome", "lame"),
     ModAwesome = apply_data(Data, New3(Boundary, ModAwesomeHandler, [])),
 
     [{"lame",
       {[{"Content-Disposition","form-data; name=\"lame\""}],
        <<"on">>}}] = FormData(ModAwesome),
 
-    ["skipping file2",
-     "skipping file1",
-     "renaming awesome to lame",
-     "skipping name"] = UserData(ModAwesome),
-
-    %% io:format("~p~n", [FormData(KeepName)]),
-    %% io:format("~p~n", [UserData(KeepName)]),
+    [{skip,"name"},
+     {rename,"awesome","lame"},
+     {data,"lame",<<"on\r\n">>},
+     {data,"lame",<<>>},
+     {skip,"file1"},
+     {skip,"file2"}] = lists:reverse(UserData(ModAwesome)),
 
     io:format("OK~n").
+
+skip_handler(Skip) ->
+    fun(Part, Acc) -> handle_skip_part(Part, Acc, Skip) end.
+
+handle_skip_part({part, Name, _Headers}, Acc, Skip) ->
+    maybe_skip_part(lists:member(Name, Skip), Name, Acc);
+handle_skip_part(Part, Acc, _Skip) ->
+    {continue, [Part|Acc]}.
+
+maybe_skip_part(true, Name, Acc) ->
+    {skip, [{skip, Name}|Acc]};
+maybe_skip_part(false, Name, Acc) ->
+    {continue, [{keep, Name}|Acc]}.
+
+rename_handler(From, To) ->
+    fun(Part, Acc) -> handle_rename(Part, Acc, From, To) end.
+
+handle_rename({part, Name, _Headers}, Acc, From, To) ->
+    maybe_rename_part(Name == From, Acc, Name, To);
+handle_rename(Part, Acc, _From, _To) ->
+    {continue, [Part|Acc]}.
+
+maybe_rename_part(true, Acc, From, To) ->
+    Headers = [{"Content-Disposition", "form-data; name=\"" ++ To ++ "\""}],
+    {continue, {To, Headers}, [{rename, From, To}|Acc]};
+maybe_rename_part(false, Acc, Name, _) ->
+    {skip, [{skip, Name}|Acc]}.
 
 apply_data([Data|Rest], MP) ->
     apply_data(Rest, psycho_multipart:data(Data, MP));
