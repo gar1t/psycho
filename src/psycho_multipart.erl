@@ -1,59 +1,106 @@
 -module(psycho_multipart).
 
--export([new/1, data/2, form_data/1]).
+-export([new/3, data/2, form_data/1]).
 
--record(mp, {delim, parts, part_acc, last}).
+-record(mp, {boundary_delim, parts, headers, acc}).
 
-new(Boundary) when is_binary(Boundary) ->
-    Delim = <<"--", Boundary/binary>>,
-    #mp{delim=Delim, parts=[], part_acc=[], last=(<<>>)}.
+new(Boundary, _Callback, _Data) when is_binary(Boundary) ->
+    #mp{
+       boundary_delim=boundary_delim(Boundary),
+       parts=[],
+       headers=pending,
+       acc=[]}.
 
-data(Data, #mp{delim=Delim, last=Last}=MP) ->
-    JoinedData = join(Last, Data),
-    handle_match(binary:match(JoinedData, Delim), JoinedData, MP).
+boundary_delim(Boundary) ->
+    <<"--", Boundary/binary>>.
 
-join(<<>>, Data) -> Data;
-join(Last, Data) -> <<Last/binary, Data/binary>>.
+data(Data, MP) ->
+    try_boundary(Data, MP).
 
-handle_match(nomatch, Data, MP) ->
-    acc_part(Data, MP);
-handle_match({Pos, Len}, Data, MP) ->
-    <<Head:Pos/binary, _:Len/binary, Rest/binary>> = Data,
-    data(Rest, maybe_new_part(Head, MP)).
+try_boundary(Data, #mp{boundary_delim=Delim, acc=Acc}=MP) ->
+    Window = search_window(Data, Acc),
+    handle_boundary_match(binary:match(Window, Delim), Window, Data, MP).
 
-acc_part(Data, #mp{part_acc=Acc}=MP) ->
-    MP#mp{part_acc=[Data|Acc], last=Data}.
+search_window(Data, []) ->
+    Data;
+search_window(Data, [Last|_]) ->
+    join(Last, Data).
 
-maybe_new_part(<<>>, MP) -> MP;
-maybe_new_part(Head, #mp{part_acc=PartAcc, parts=Parts}=MP) ->
-    Part = lists:reverse([Head|PartAcc]),
-    MP#mp{parts=[Part|Parts], part_acc=[], last=(<<>>)}.
+join(B1, B2) ->
+    <<B1/binary, B2/binary>>.
 
-form_data(MP) ->
-    form_data_from_parts(parts(MP)).
+handle_boundary_match(nomatch, Window, Data, MP) ->
+    try_headers(Window, Data, MP);
+handle_boundary_match({Pos, Len}, Window, _Data, MP) ->
+    <<Prev:Pos/binary, _:Len/binary, Next/binary>> = Window,
+    new_part(Next, finalize_part(Prev, MP)).
 
-parts(#mp{part_acc=[], parts=Parts}) ->
-    lists:reverse(Parts);
-parts(#mp{part_acc=[<<"--\r\n">>], parts=Parts}) ->
-    lists:reverse(Parts);
-parts(#mp{part_acc=PartAcc, parts=Parts}) ->
-    lists:reverse([lists:reverse(PartAcc)|Parts]).
+finalize_part(<<>>, MP) -> MP;
+finalize_part(Data, #mp{acc=Acc}=MP) ->
+    add_cur(try_headers(Data, MP#mp{acc=pop_last(Acc)})).
 
-form_data_from_parts(Parts) ->
-    [parse_part(Part) || Part <- Parts].
+pop_last([]) -> [];
+pop_last([_|Rest]) -> Rest.
 
-parse_part(Part) ->
-    case binary:split(iolist_to_binary(Part), <<"\r\n\r\n">>) of
-        [<<"\r\n", RawHeaders/binary>>, RawBody] ->
-            {parse_headers(RawHeaders), strip_trailing_crlf(RawBody)};
-        [Body] ->
-            {<<>>, Body}
+-define(HEADERS_DELIM, <<"\r\n\r\n">>).
+
+try_headers(Data, MP) ->
+    try_headers(Data, Data, MP).
+
+try_headers(Window, Data, #mp{headers=pending}=MP) ->
+    handle_match_headers(
+      binary:match(Window, ?HEADERS_DELIM),
+      Window, Data, MP);
+try_headers(_Window, Data, #mp{acc=Acc}=MP) ->
+    MP#mp{acc=[Data|Acc]}.
+
+handle_match_headers(nomatch, _Window, Data, #mp{acc=Acc}=MP) ->
+    MP#mp{acc=[Data|Acc]};
+handle_match_headers({Pos, Len}, Window, _Data, MP) ->
+    <<Prev:Pos/binary, _:Len/binary, Next/binary>> = Window,
+    start_body(Next, finalize_headers(Prev, MP)).
+
+finalize_headers(Data, #mp{acc=Acc}=MP) ->
+    Raw = iolist_to_binary(lists:reverse([Data|pop_last(Acc)])),
+    Headers = parse_headers(Raw),
+    MP#mp{headers=Headers}.
+
+parse_headers(<<"\r\n", Raw/binary>>) ->
+    [parse_header(Part) || Part <- split_headers(Raw)].
+
+split_headers(Raw) ->
+    binary:split(Raw, <<"\r\n">>, [global]).
+
+parse_header(Raw) ->
+    case binary:split(Raw, <<":">>) of
+        [Name, RawVal] -> {Name, header_val(RawVal)};
+        [Name] -> {Name, <<>>}
     end.
 
-parse_headers(Raw) ->
-    Raw.
+header_val(<<" ", Val/binary>>) -> Val;
+header_val(Val) -> Val.
 
-strip_trailing_crlf(Raw) ->
-    N = size(Raw) - 2,
-    <<Stripped:N/binary, "\r\n">> = Raw,
-    Stripped.
+add_cur(#mp{headers=Headers, acc=Acc, parts=Parts}=MP) ->
+    Part = {Headers, finalize_body(Acc)},
+    MP#mp{parts=[Part|Parts], headers=pending, acc=[]}.
+
+start_body(Data, MP) -> MP#mp{acc=[Data]}.
+
+finalize_body([]) -> <<>>;
+finalize_body([Last|Rest]) ->
+    LastTrimmed = strip_trailing_crlf(Last),
+    iolist_to_binary(lists:reverse([LastTrimmed|Rest])).
+
+strip_trailing_crlf(Bin) ->
+    N = size(Bin) - 2,
+    case Bin of
+        <<Stripped:N/binary, "\r\n">> -> Stripped;
+        _ -> Bin
+    end.
+
+new_part(Data, MP) ->
+    try_headers(Data, MP).
+
+form_data(#mp{parts=Parts, acc=Acc}) ->
+    [{parts, lists:reverse(Parts)},
+     {acc, Acc}].
