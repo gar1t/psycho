@@ -538,14 +538,73 @@ two tuple:
 Or:
 
 	app(Env) ->
-	    {recv_form_data, App, Env, [{part_handler, handle_part/2}]}.
+	    {recv_form_data, App, Env, [{part_handler, fun handle_part/2}]}.
 
 
 Or:
 
 	app(Env) ->
-	    {recv_form_data, App, Env, [{part_handler, handle_part/2},
+	    {recv_form_data, App, Env, [{part_handler, fun handle_part/2},
 		                            {recv_timeout, 60000}
 									{recv_size, 10240]}.
 
-I definitely like this options patter - much easier to scale.
+I definitely like this options pattern - much easier to scale.
+
+What about this handle part interface?
+
+This might be a standard interface for handling file uploads.
+
+    handle_part({part, Name, Headers}=Part, Env) ->
+	    case is_file(Headers) of
+		    {true, Filename} ->
+			    F = open_file(Filename),
+			    {continue, psycho:set_env({open_file, Name}, F, Env)}; 
+			false ->
+			    {continue, Env}
+		end;
+	handle_part({data, Name, <<>>}, Env) ->
+	    maybe_close_file(Name, Env),
+		{continue, Env};
+	handle_part({data, Name, Data}, Env) ->
+	    case maybe_write_to_file(Name, Data, Env) of
+		    true -> {drop_data, Env};
+			false -> {continue, Env}
+		end.
+
+Notes:
+
+- A new part is signified by the tuple `{part, Name, Headers}`
+
+  This lets the handler initialize any structures for handling a file
+  (typically opening a file handle, but could be setting up a connection to a
+  remote server, etc.)
+
+  The handler must use the Env as state to store any file related artifacts
+  (e.g. file handles, sockets, etc.)
+
+  The handler can indicate that a part should be dropped altogether by
+  returning `{drop_part, Env}`. If so optimizes, this would let the server skip
+  to the next boundary/part in the request stream (practically this would just
+  mean iterating through the psycho_multipart filtered parts until we reach the
+  next part).
+
+  The result may optionally contain a modififed part element, in addition to
+  the. This would let a handler filter name and headers. (Advanced and
+  speculative - easy to implement, but if not used, then why?)
+
+- Part data will be conveyed using the tuple `{data, Name, Data}`. An empty
+  binary will indicate the end of the part.
+
+  Handlers can indicate that data should be dropped using `{drop_data,
+  Env}`. This is an important step for file handlers as it prevents the
+  potentially huge file body from being collected and presented in the file
+  form data app call. The example shows that, if file data is written, it's
+  dropped.
+
+  To indicate that the data should be kept and included in the form data
+  provided to the app, the handler should return `{continue, Env}`. Optionally,
+  it can return `{continue, NewData, Env}` if it wants to modify the
+  data. (Also advanced and speculative, but easy to do.)
+
+  Handlers should take care to handle the empty data binary case and close any
+  open file handles, sockets, etc.
