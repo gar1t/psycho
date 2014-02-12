@@ -201,17 +201,17 @@ test_multipart() ->
         {"Content-Type","application/octet-stream"}],
        <<"This\nis\nfile 2.\n">>}}] = FormData(All),
 
-    %% Use part handler callback to skip the two files
+    %% Use part handler callback to drop the two files
 
-    SkipFilesHandler = skip_handler(["file1", "file2"]),
-    SkipFiles = apply_data(Data, New3(Boundary, SkipFilesHandler, [])),
+    DropFilesHandler = drop_handler(["file1", "file2"]),
+    DropFiles = apply_data(Data, New3(Boundary, DropFilesHandler, [])),
 
     [{"name",
       {[{"Content-Disposition","form-data; name=\"name\""}],
        <<"Bob">>}},
      {"awesome",
       {[{"Content-Disposition","form-data; name=\"awesome\""}],
-       <<"on">>}}] = FormData(SkipFiles),
+       <<"on">>}}] = FormData(DropFiles),
 
     [{keep,"name"},
      {data,"name",<<"Bob">>},
@@ -219,12 +219,12 @@ test_multipart() ->
      {keep,"awesome"},
      {data,"awesome",<<"on">>},
      {data,"awesome",<<>>},
-     {skip,"file1"},
-     {skip,"file2"}] = lists:reverse(UserData(SkipFiles)),
+     {drop,"file1"},
+     {drop,"file2"}] = lists:reverse(UserData(DropFiles)),
 
     %% Use a part handler to keep only the two files
 
-    KeepFilesHandler = skip_handler(["name", "awesome"]),
+    KeepFilesHandler = drop_handler(["name", "awesome"]),
     KeepFiles = apply_data(Data, New3(Boundary, KeepFilesHandler, [])),
 
     [{"file1",
@@ -238,8 +238,8 @@ test_multipart() ->
         {"Content-Type","application/octet-stream"}],
        <<"This\nis\nfile 2.\n">>}}] = FormData(KeepFiles),
 
-    [{skip,"name"},
-     {skip,"awesome"},
+    [{drop,"name"},
+     {drop,"awesome"},
      {keep,"file1"},
      {data,"file1",<<"This is\nfile 1.\n">>},
      {data,"file1",<<>>},
@@ -256,26 +256,26 @@ test_multipart() ->
       {[{"Content-Disposition","form-data; name=\"lame\""}],
        <<"on">>}}] = FormData(ModAwesome),
 
-    [{skip,"name"},
+    [{drop,"name"},
      {rename,"awesome","lame"},
      {data,"lame",<<"on">>},
      {data,"lame",<<>>},
-     {skip,"file1"},
-     {skip,"file2"}] = lists:reverse(UserData(ModAwesome)),
+     {drop,"file1"},
+     {drop,"file2"}] = lists:reverse(UserData(ModAwesome)),
 
     io:format("OK~n").
 
-skip_handler(Skip) ->
-    fun(Part, Acc) -> handle_skip_part(Part, Acc, Skip) end.
+drop_handler(Drop) ->
+    fun(Part, Acc) -> handle_drop_part(Part, Acc, Drop) end.
 
-handle_skip_part({part, Name, _Headers}, Acc, Skip) ->
-    maybe_skip_part(lists:member(Name, Skip), Name, Acc);
-handle_skip_part(Part, Acc, _Skip) ->
+handle_drop_part({part, Name, _Headers}, Acc, Drop) ->
+    maybe_drop_part(lists:member(Name, Drop), Name, Acc);
+handle_drop_part(Part, Acc, _Drop) ->
     {continue, [Part|Acc]}.
 
-maybe_skip_part(true, Name, Acc) ->
-    {skip, [{skip, Name}|Acc]};
-maybe_skip_part(false, Name, Acc) ->
+maybe_drop_part(true, Name, Acc) ->
+    {drop, [{drop, Name}|Acc]};
+maybe_drop_part(false, Name, Acc) ->
     {continue, [{keep, Name}|Acc]}.
 
 rename_handler(From, To) ->
@@ -290,7 +290,7 @@ maybe_rename_part(true, Acc, From, To) ->
     Headers = [{"Content-Disposition", "form-data; name=\"" ++ To ++ "\""}],
     {continue, {To, Headers}, [{rename, From, To}|Acc]};
 maybe_rename_part(false, Acc, Name, _) ->
-    {skip, [{skip, Name}|Acc]}.
+    {drop, [{drop, Name}|Acc]}.
 
 apply_data([Data|Rest], MP) ->
     apply_data(Rest, psycho_multipart:data(Data, MP));

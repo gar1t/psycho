@@ -567,7 +567,7 @@ This might be a standard interface for handling file uploads.
 		{continue, Env};
 	handle_part({data, Name, Data}, Env) ->
 	    case maybe_write_to_file(Name, Data, Env) of
-		    true -> {skip, Env};
+		    true -> {drop, Env};
 			false -> {continue, Env}
 		end.
 
@@ -582,8 +582,8 @@ Notes:
   The handler must use the Env as state to store any file related artifacts
   (e.g. file handles, sockets, etc.)
 
-  The handler can indicate that a part should be skipped altogether by
-  returning `{skip, Env}`. If so optimizes, this would let the server skip
+  The handler can indicate that a part should be dropped altogether by
+  returning `{drop, Env}`. If so optimizes, this would let the server drop
   to the next boundary/part in the request stream (practically this would just
   mean iterating through the psycho_multipart filtered data until we reach the
   next part).
@@ -594,11 +594,11 @@ Notes:
 - Part data will be conveyed using the tuple `{data, Name, Data}`. An empty
   binary will indicate the end of the part.
 
-  Handlers can indicate that data should be skipped using `{skip,
+  Handlers can indicate that data should be dropped using `{drop,
   Env}`. This is an important step for file handlers as it prevents the
   potentially large file body from being collected and presented in the file
   form data app call. The example shows that, if file data is written, it's
-  skipped.
+  dropped.
 
   To indicate that the data should be kept and included in the form data
   provided to the app, the handler should return `{continue, Env}`. Optionally,

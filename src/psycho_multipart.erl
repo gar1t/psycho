@@ -50,7 +50,7 @@ finalize_part(<<>>, MP) -> MP;
 finalize_part(Data, MP) ->
     add_part(notify_part_end(handle_data(<<>>, MP#mp{last=Data}))).
 
-notify_part_end(#mp{headers=skipping}=MP) -> MP;
+notify_part_end(#mp{headers=dropping}=MP) -> MP;
 notify_part_end(#mp{cb=undefined}=MP) -> MP;
 notify_part_end(#mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
     Result = Callback({data, Name, <<>>}, CbData),
@@ -70,7 +70,7 @@ try_headers(_Window, Data, MP) ->
 
 handle_data(Data, #mp{cb=undefined}=MP) ->
     push_data(Data, MP);
-handle_data(_Data, #mp{headers=skipping}=MP) ->
+handle_data(_Data, #mp{headers=dropping}=MP) ->
     MP;
 handle_data(Data, #mp{last=Last, name=Name, cb=Callback, cb_data=CbData}=MP) ->
     Result = Callback({data, Name, Last}, CbData),
@@ -80,7 +80,7 @@ handle_data_cb({continue, CbData}, Data, MP) ->
     push_data(Data, MP#mp{cb_data=CbData});
 handle_data_cb({continue, Data, CbData}, _, MP) ->
     push_data(Data, MP#mp{cb_data=CbData});
-handle_data_cb({skip, CbData}, Data, MP) ->
+handle_data_cb({drop, CbData}, Data, MP) ->
     push_data(Data, MP#mp{last=undefined, cb_data=CbData}).
 
 push_data(Data, #mp{last=undefined}=MP) ->
@@ -129,13 +129,13 @@ handle_part_cb({continue, CbData}, Name, Headers, MP) ->
     MP#mp{name=Name, headers=Headers, cb_data=CbData};
 handle_part_cb({continue, {Name, Headers}, CbData}, _, _, MP) ->
     MP#mp{name=Name, headers=Headers, cb_data=CbData};
-handle_part_cb({skip, CbData}, Name, _, MP) ->
-    MP#mp{name=Name, headers=skipping, cb_data=CbData}.
+handle_part_cb({drop, CbData}, Name, _, MP) ->
+    MP#mp{name=Name, headers=dropping, cb_data=CbData}.
 
 start_body(Data, MP) ->
     MP#mp{last=Data, acc=[]}.
 
-add_part(#mp{headers=skipping}=MP) ->
+add_part(#mp{headers=dropping}=MP) ->
     reset_part(MP);
 add_part(#mp{name=Name, headers=Headers}=MP) ->
     Body = finalize_body(MP),
