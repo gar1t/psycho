@@ -214,10 +214,10 @@ test_multipart() ->
        <<"on">>}}] = FormData(SkipFiles),
 
     [{keep,"name"},
-     {data,"name",<<"Bob\r\n">>},
+     {data,"name",<<"Bob">>},
      {data,"name",<<>>},
      {keep,"awesome"},
-     {data,"awesome",<<"on\r\n">>},
+     {data,"awesome",<<"on">>},
      {data,"awesome",<<>>},
      {skip,"file1"},
      {skip,"file2"}] = lists:reverse(UserData(SkipFiles)),
@@ -241,10 +241,10 @@ test_multipart() ->
     [{skip,"name"},
      {skip,"awesome"},
      {keep,"file1"},
-     {data,"file1",<<"This is\nfile 1.\n\r\n">>},
+     {data,"file1",<<"This is\nfile 1.\n">>},
      {data,"file1",<<>>},
      {keep,"file2"},
-     {data,"file2",<<"This\nis\nfile 2.\n\r\n">>},
+     {data,"file2",<<"This\nis\nfile 2.\n">>},
      {data,"file2",<<>>}] = lists:reverse(UserData(KeepFiles)),
 
     %% Use a part handler to modify a part
@@ -258,7 +258,7 @@ test_multipart() ->
 
     [{skip,"name"},
      {rename,"awesome","lame"},
-     {data,"lame",<<"on\r\n">>},
+     {data,"lame",<<"on">>},
      {data,"lame",<<>>},
      {skip,"file1"},
      {skip,"file2"}] = lists:reverse(UserData(ModAwesome)),

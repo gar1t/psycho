@@ -243,11 +243,14 @@ decode_urlencoded_form_data(Data) ->
 handle_app_recv_multipart(TypeParams, App, Options, State) ->
     Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
-    Boundary = boundary_param(TypeParams, State),
-    error_on_bad_multipart_recv_length(Length, Boundary),
-    MP = psycho_multipart:new(Boundary, 'TODO_Callback', 'TODO_Cb_Data'),
+    PartHandler = proplists:get_value(part_handler, Options),
+    MP = new_multipart(TypeParams, PartHandler, State),
     Recv = safe_recv_fun(Length, Timeout),
     handle_recv_multipart(Recv(State), Recv, MP, App, State).
+
+new_multipart(TypeParams, PartHandler, #state{env=Env}=State) ->
+    Boundary = boundary_param(TypeParams, State),
+    psycho_multipart:new(Boundary, PartHandler, Env).
 
 -define(BOUNDARY_PATTERN, <<"[; +]boundary=(.*?)(;|$)">>).
 
@@ -260,12 +263,6 @@ handle_boundary_re({match, [Boundary]}, _State) -> Boundary;
 handle_boundary_re(nomatch, State) ->
     respond(internal_error("Invalid multipart content type"), State).
 
-error_on_bad_multipart_recv_length(Length, Boundary) ->
-    case Length < size(Boundary) of
-        true -> error({bad_multipart_recv_length, Length});
-        false -> ok
-    end.
-
 safe_recv_fun(Length, Timeout) ->
     fun(State) -> safe_recv(Length, Timeout, State) end.
 
@@ -276,8 +273,9 @@ handle_recv_multipart({ok, Data}, Recv, MP, App, State) ->
 handle_recv_multipart({error, Error}, _Recv, _MP, _App, _State) ->
     {stop, {recv_error, Error}}.
 
-handle_recv_multipart_finished(MP, App, #state{env=Env}=State) ->
+handle_recv_multipart_finished(MP, App, State) ->
     FormData = psycho_multipart:form_data(MP),
+    Env = psycho_multipart:user_data(MP),
     AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
     error_on_recv_after_eof(AppResult, App),
     handle_app_result(AppResult, State).

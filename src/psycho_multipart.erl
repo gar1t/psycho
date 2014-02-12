@@ -37,11 +37,18 @@ handle_boundary_match(nomatch, Window, Data, MP) ->
     try_headers(Window, Data, MP);
 handle_boundary_match({Pos, Len}, Window, _Data, MP) ->
     <<Prev:Pos/binary, _:Len/binary, Next/binary>> = Window,
-    new_part(Next, finalize_part(Prev, MP)).
+    new_part(Next, finalize_part(strip_trailing_crlf(Prev), MP)).
+
+strip_trailing_crlf(Bin) ->
+    N = size(Bin) - 2,
+    case Bin of
+        <<Stripped:N/binary, "\r\n">> -> Stripped;
+        _ -> Bin
+    end.
 
 finalize_part(<<>>, MP) -> MP;
 finalize_part(Data, MP) ->
-    add_part(notify_part_end(try_headers(Data, MP#mp{last=undefined}))).
+    add_part(notify_part_end(handle_data(<<>>, MP#mp{last=Data}))).
 
 notify_part_end(#mp{headers=skipping}=MP) -> MP;
 notify_part_end(#mp{cb=undefined}=MP) -> MP;
@@ -58,23 +65,23 @@ try_headers(Window, Data, #mp{headers=pending}=MP) ->
     handle_match_headers(
       binary:match(Window, ?HEADERS_DELIM),
       Window, Data, MP);
-try_headers(_Window, _Data, #mp{headers=skipping}=MP) ->
-    MP;
 try_headers(_Window, Data, MP) ->
-    notify_data(Data, MP).
+    handle_data(Data, MP).
 
-notify_data(Data, #mp{cb=undefined}=MP) ->
+handle_data(Data, #mp{cb=undefined}=MP) ->
     push_data(Data, MP);
-notify_data(Data, #mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
-    Result = Callback({data, Name, Data}, CbData),
+handle_data(_Data, #mp{headers=skipping}=MP) ->
+    MP;
+handle_data(Data, #mp{last=Last, name=Name, cb=Callback, cb_data=CbData}=MP) ->
+    Result = Callback({data, Name, Last}, CbData),
     handle_data_cb(Result, Data, MP).
 
 handle_data_cb({continue, CbData}, Data, MP) ->
     push_data(Data, MP#mp{cb_data=CbData});
 handle_data_cb({continue, Data, CbData}, _, MP) ->
     push_data(Data, MP#mp{cb_data=CbData});
-handle_data_cb({skip, CbData}, _, MP) ->
-    MP#mp{cb_data=CbData}.
+handle_data_cb({skip, CbData}, Data, MP) ->
+    push_data(Data, MP#mp{last=undefined, cb_data=CbData}).
 
 push_data(Data, #mp{last=undefined}=MP) ->
     MP#mp{last=Data};
@@ -142,7 +149,7 @@ reset_part(MP) ->
     MP#mp{name=undefined, headers=pending, last=undefined, acc=[]}.
 
 finalize_body(#mp{last=Last, acc=Acc}) ->
-    strip_trailing_crlf(iolist_to_binary(lists:reverse([Last|Acc]))).
+    iolist_to_binary(lists:reverse([Last|Acc])).
 
 -define(FORM_DATA_NAME_RE, <<"form-data; *name=\"(.*?)\"">>).
 
@@ -153,13 +160,6 @@ form_data_name(Headers) ->
 
 handle_form_data_name_re({match, [Name]}) -> Name;
 handle_form_data_name_re(nomatch) -> <<>>.
-
-strip_trailing_crlf(Bin) ->
-    N = size(Bin) - 2,
-    case Bin of
-        <<Stripped:N/binary, "\r\n">> -> Stripped;
-        _ -> Bin
-    end.
 
 new_part(Data, MP) ->
     try_headers(Data, MP).
