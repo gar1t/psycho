@@ -37,7 +37,14 @@ handle_boundary_match(nomatch, Window, Data, MP) ->
     try_headers(Window, Data, MP);
 handle_boundary_match({Pos, Len}, Window, _Data, MP) ->
     <<Prev:Pos/binary, _:Len/binary, Next/binary>> = Window,
-    new_part(Next, finalize_part(strip_trailing_crlf(Prev), MP)).
+    new_part(Next, finalize_part(Prev, MP)).
+
+finalize_part(<<>>, MP) -> MP;
+finalize_part(LastData, MP) ->
+    add_part(notify_part_end(handle_last_data(LastData, MP))).
+
+handle_last_data(Data, MP) ->
+    handle_data(<<>>, MP#mp{last=strip_trailing_crlf(Data)}).
 
 strip_trailing_crlf(Bin) ->
     N = size(Bin) - 2,
@@ -46,12 +53,8 @@ strip_trailing_crlf(Bin) ->
         _ -> Bin
     end.
 
-finalize_part(<<>>, MP) -> MP;
-finalize_part(Data, MP) ->
-    add_part(notify_part_end(handle_data(<<>>, MP#mp{last=Data}))).
-
-notify_part_end(#mp{headers=dropping}=MP) -> MP;
 notify_part_end(#mp{cb=undefined}=MP) -> MP;
+notify_part_end(#mp{headers=dropping}=MP) -> MP;
 notify_part_end(#mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
     Result = Callback({data, Name, <<>>}, CbData),
     handle_data_cb(Result, <<>>, MP).
