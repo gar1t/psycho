@@ -9,7 +9,8 @@
 
 -record(state, {handler_sup, lsock, app}).
 
--define(backlog, 128).
+-define(BACKLOG, 128).
+-define(RECBUF, 8192).
 
 %%%===================================================================
 %%% Start / init
@@ -50,7 +51,8 @@ listen_options(_Binding, _Options) ->
     [binary,
      {active, false},
      {reuseaddr, true},
-     {backlog, ?backlog}].
+     {backlog, ?BACKLOG},
+     {recbuf, ?RECBUF}].
 
 handle_listen({ok, LSock}) -> LSock;
 handle_listen({error, Err}) -> error({listen, Err}).

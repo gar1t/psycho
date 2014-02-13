@@ -64,7 +64,9 @@ handle_msg({http, _, http_eoh}, _From, State) ->
     set_socket_raw_passive(State),
     dispatch_to_app(finalize_request(State));
 handle_msg({tcp_closed, _}, _From, _State) ->
-    {stop, normal}.
+    {stop, normal};
+handle_msg({tcp_error, _, Reason}, _From, _State) ->
+    {stop, {tcp_error, Reason}}.
 
 set_socket_active_once(#state{sock=S}) ->
     ok = inet:setopts(S, [{active, once}]).
