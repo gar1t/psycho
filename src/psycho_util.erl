@@ -6,9 +6,11 @@
          parse_query_string/1,
          ensure_parsed_cookie/1,
          parse_cookie/1,
-         cookie_header/2,
+         cookie_header/2, cookie_header/3,
          encrypt/2, decrypt/2,
-         validate/2, format_validate_error/1]).
+         validate/2, format_validate_error/1,
+         parse_content_disposition/1,
+         content_disposition/2]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -133,7 +135,17 @@ cookie_nameval(Str) ->
 strip_spaces(S) -> string:strip(S, both, $ ).
 
 cookie_header(Name, Value) ->
-    {"Set-Cookie", [Name, "=", Value, "; Version=1"]}.
+    cookie_header(Name, Value, []).
+
+cookie_header(Name, Value, Options) ->
+    Base = [Name, "=", Value, "; Version=1"],
+    {"Set-Cookie", append_cookie_options(Options, Base)}.
+
+append_cookie_options([], Val) -> Val;
+append_cookie_options([{path, Path}|Rest], Val) ->
+    append_cookie_options(Rest, [Val, "; Path=", Path]);
+append_cookie_options([Other|_], _Val) ->
+    error({invalid_cookie_option, Other}).
 
 %%%===================================================================
 %%% Crypto
@@ -215,3 +227,31 @@ format_validate_error({Field, {min_length, MinLength}}) ->
       [Field, MinLength]);
 format_validate_error(Other) ->
     io_lib:format("~p", [Other]).
+
+%%%===================================================================
+%%% Parsing content-disposition multipart part header
+%%%===================================================================
+
+parse_content_disposition(S) ->
+    handle_split_content_disp(re:split(S, "; *", [{return, list}])).
+
+handle_split_content_disp(["form-data"|Vars]) ->
+    acc_content_disp_namevals(Vars, []).
+
+acc_content_disp_namevals([S|Rest], Acc) ->
+    handle_disp_nameval_match(disp_nameval_match(S), Rest, Acc);
+acc_content_disp_namevals([], Acc) ->
+    Acc.
+
+disp_nameval_match(S) ->
+    re:run(S, "(.*?)=\"(.*?)\"", [{capture, all_but_first, list}]).
+
+handle_disp_nameval_match({match, [Name, Val]}, Rest, Acc) ->
+    acc_content_disp_namevals(Rest, [{Name, Val}|Acc]);
+handle_disp_nameval_match(nomatch, Rest, Acc) ->
+    acc_content_disp_namevals(Rest, Acc).
+
+content_disposition(Name, PartHeaders) ->
+    Unparsed = proplists:get_value("Content-Disposition", PartHeaders),
+    Parsed = parse_content_disposition(Unparsed),
+    proplists:get_value(Name, Parsed).
