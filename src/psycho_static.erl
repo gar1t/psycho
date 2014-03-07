@@ -1,6 +1,6 @@
 -module(psycho_static).
 
--export([create_app/1, serve_file/2]).
+-export([create_app/1, serve_file/1, serve_file/2]).
 
 -include_lib("kernel/include/file.hrl").
 -include("http_status.hrl").
@@ -20,17 +20,7 @@ create_app(Dir) ->
     fun(Env) -> ?MODULE:serve_file(Dir, Env) end.
 
 serve_file(Dir, Env) ->
-    {Info, Path} = resolved_file_info(requested_path(Dir, Env)),
-    LastModified = last_modified(Info),
-    ContentType = content_type(Path),
-    Size = file_size(Info),
-    RawHeaders =
-        [{"Last-Modified", LastModified},
-         {"Content-Type", ContentType},
-         {"Content-Length", Size}],
-    Headers = remove_undefined(RawHeaders),
-    Body = body_iterable(Path, open_file(Path)),
-    {{200, "OK"}, Headers, Body}.
+    serve_file(requested_path(Dir, Env)).
 
 requested_path(Dir, Env) ->
     filename:join(Dir, relative_request_path(Env)).
@@ -45,6 +35,19 @@ request_path(Env) ->
 strip_leading_slashes([$/|Rest]) -> strip_leading_slashes(Rest);
 strip_leading_slashes([$\\|Rest]) -> strip_leading_slashes(Rest);
 strip_leading_slashes(RelativePath) -> RelativePath.
+
+serve_file(File) ->
+    {Info, Path} = resolved_file_info(File),
+    LastModified = last_modified(Info),
+    ContentType = content_type(Path),
+    Size = file_size(Info),
+    RawHeaders =
+        [{"Last-Modified", LastModified},
+         {"Content-Type", ContentType},
+         {"Content-Length", Size}],
+    Headers = remove_undefined(RawHeaders),
+    Body = body_iterable(Path, open_file(Path)),
+    {{200, "OK"}, Headers, Body}.
 
 resolved_file_info(Path) ->
     handle_file_or_dir_info(file_info(Path), Path).
