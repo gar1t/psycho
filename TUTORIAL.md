@@ -2,10 +2,22 @@
 
 Psycho is a ridiculously kiss ass Erlang web server that implements a CGI/WSGI
 style interface. This may not strike you now as world changing and it's okay
--- you're among friends.
+-- soon it will all be clear.
 
 You are about to embark on a journey that will change your life. If you don't
 drink beer, now is the time to start. Let's pour something delicious and begin!
+
+## Get and build Psycho
+
+At a shell prompt (i.e. console or command line), execute the following lines
+(don't type the preceding `$` symbol -- this merely indicates the command
+should be executed from a system shell):
+
+    $ git clone https://github.com/gar1t/psycho.git
+	$ cd psycho
+	$ make check
+
+This will compile Psycho and run all of the tests.
 
 ## Create a Psycho App Skeleton
 
@@ -15,11 +27,7 @@ Run `psycho-mkapp` to generate a new application skeleton:
     $ ./psycho-mkapp psytut ~/psytut
 
 This will create a project skeleton in a directory named "psytut" in your home
-directory. If you're tempted to pronounce this name, it's "Sigh Tut" - or "Sigh
-Toot". You can put a hard "P" in there if you want -- "PsEye Toot". Just have
-fun with it!
-
-If you want to create the project in a different directory, change "~/psytut"
+directory. If you want to create the project in a different directory, change "~/psytut"
 to something else.
 
 ## Compile the Empty Project
@@ -30,8 +38,7 @@ Change to the new project location and run `make`:
     $ make
 
 This will download the project dependencies (in this case, Psycho itself and
-e2, another kick ass world changing library that simplifies writing OTP
-compliant Erlang applications).
+e2, a library that simplifies writing OTP compliant Erlang applications).
 
 For the rest of this tutorial, you will use your editor to create and modify
 Erlang source files, compile them using `make`, and test the result in the
@@ -70,10 +77,10 @@ You should see this simple message:
 
 Let's change this to test the iterative process that we'll use in the
 tutorial. Edit `psytut_http.erl` and modify the text "Hello psytut" to "Hello,
-Psycho Tutorial!" -- your users will thank you.
+Psycho Tutorial!".
 
-Run `make` in a separate window or from your editor/IDE (not Eclipse)
-to compile the modified source file.
+Run `make app` in a separate window or from your editor/IDE to compile the
+modified source file.
 
 Note that in the Erlang shell you'll see:
 
@@ -108,8 +115,8 @@ Let's inject some middleware into this cycle:
      |            |+--------->|            |+--------->|            |
      +------------+           +------------+           +------------+
 
-In this case, the client and server remain exactly the same and a new component
-sits in between the two.
+In this case, the client and server remain the same and a new component sits in
+between the two.
 
 Enough ASCII art! Let's implement this to illustrate.
 
@@ -122,8 +129,7 @@ Modify this line to be:
     psycho_server:start(?PORT, apply_header_footer(?MODULE)).
 
 This applies a yet-to-be defined function to add some middleware to our
-application. Let's define that function now. Add the following to
-`psytut_http.erl`:
+application. Let's define that function now -- in `psytut_http.erl` add:
 
     apply_header_footer(App) ->
         sample_middleware:header_footer("# Header\n\n", "\n\n# Footer", App).
