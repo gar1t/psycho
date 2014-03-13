@@ -613,3 +613,7 @@ Notes:
 This asymmetry is slightly perturbing. Should it now be psycho:get_env?
 
 get_env(Name, Env) feels wrong.
+
+## Misc
+
+https://github.com/benoitc/hackney_lib

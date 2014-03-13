@@ -177,7 +177,7 @@ In this change we're applying another application to the chain.
 Add this function to the module:
 
     apply_auth(App) ->
-        sample_middleware:basic_auth("admin", "sesame", App).
+        sample_middleware:basic_auth("Psycho", "admin", "sesame", App).
 
 This function wraps an application with basic authentication functionality,
 provided by the sample_middleware module. We'll use the credentials specified
