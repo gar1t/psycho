@@ -8,3 +8,6 @@ include erlang.mk
 
 check: app
 	erl -pa ebin -eval 'psycho_tests:run()' -s init stop -noshell
+
+shell:
+	erl -pa ebin -s psycho_reloader
