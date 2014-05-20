@@ -4,13 +4,15 @@
          ensure_parsed_request_path/1,
          parse_request_path/1,
          parse_query_string/1,
+         split_path/1,
          ensure_parsed_cookie/1,
          parse_cookie/1,
          cookie_header/2, cookie_header/3,
          encrypt/2, decrypt/2,
          validate/2, format_validate_error/1,
          parse_content_disposition/1,
-         content_disposition/2]).
+         content_disposition/2,
+         app_dir/1, priv_dir/1, priv_dir/2]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -69,6 +71,11 @@ split_once([Char|Rest], Delim, Acc) ->
     split_once(Rest, Delim, [Char|Acc]);
 split_once([], _Delim, Acc) ->
     {lists:reverse(Acc), ""}.
+
+split_path([$/|RestPath]) ->
+    split_path(RestPath);
+split_path(Path) ->
+    split_all(Path, $/, "", []).
 
 %%%===================================================================
 %%% Query string
@@ -255,3 +262,17 @@ content_disposition(Name, PartHeaders) ->
     Unparsed = proplists:get_value("Content-Disposition", PartHeaders),
     Parsed = parse_content_disposition(Unparsed),
     proplists:get_value(Name, Parsed).
+
+%%%===================================================================
+%%% Module directory functions
+%%%===================================================================
+
+app_dir(Mod) ->
+    BeamDir = filename:dirname(code:which(Mod)),
+    filename:dirname(BeamDir).
+
+priv_dir(Mod) ->
+    filename:join(app_dir(Mod), "priv").
+
+priv_dir(Mod, Subdir) ->
+    filename:join(priv_dir(Mod), Subdir).
