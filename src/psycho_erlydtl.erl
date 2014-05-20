@@ -1,6 +1,6 @@
 -module(psycho_erlydtl).
 
--export([compile_priv_dir/3, compile_priv_dir/4, render/2]).
+-export([compile_priv_dir/3, compile_priv_dir/4, render/2, render/3]).
 
 compile_priv_dir(AppMod, TemplateMod, Options) ->
     erlydtl:compile_dir(priv_dir(AppMod), TemplateMod, Options).
@@ -9,22 +9,27 @@ compile_priv_dir(AppMod, Subdir, TemplateMod, Options) ->
     erlydtl:compile_dir(priv_dir(AppMod, Subdir), TemplateMod, Options).
 
 priv_dir(Mod) ->
-    handle_mod_beam_priv_dir(code:which(Mod), Mod).
+    filename:join(app_dir(Mod), "priv").
 
-handle_mod_beam_priv_dir(non_existing, Mod) ->
+priv_dir(Mod, Subdir) ->
+    filename:join(priv_dir(Mod, Subdir)).
+
+app_dir(Mod) ->
+    handle_mod_beam_app_dir(code:which(Mod), Mod).
+
+handle_mod_beam_app_dir(non_existing, Mod) ->
     error({non_existing_module, Mod});
-handle_mod_beam_priv_dir(BeamPath, _Mod) ->
+handle_mod_beam_app_dir(BeamPath, _Mod) ->
     EbinDir = filename:dirname(BeamPath),
-    AppDir = filename:dirname(EbinDir),
-    filename:join(AppDir, "priv").
-
-priv_dir(Mod, SubDir) ->
-    filename:join(priv_dir(Mod), SubDir).
+    filename:dirname(EbinDir).
 
 render(Template, Vars) ->
     TemplateMod = template_mod(Template),
     handle_template_compile(
       erlydtl:compile(Template, TemplateMod), TemplateMod, Vars).
+
+render(AppMod, Template, Vars) ->
+    render(filename:join(app_dir(AppMod), Template), Vars).
 
 template_mod(Template) ->
     Hash = erlang:phash2(Template, 100000),
