@@ -243,6 +243,23 @@ decode_urlencoded_form_data(Data) ->
 %%%===================================================================
 
 handle_app_recv_multipart(TypeParams, App, Options, State) ->
+    maybe_send_continue(State),
+    start_recv_multipart(TypeParams, App, Options, State).
+
+maybe_send_continue(State) ->
+    case expect_continue(State) of
+        true -> send_continue(State);
+        false -> ok
+    end.
+
+expect_continue(State) ->
+    req_header("Expect", State) == "100-continue".
+
+send_continue(#state{sock=Sock}) ->
+    Line = ["HTTP/1.1 100 Continue", ?CRLF, ?CRLF],
+    ok = gen_tcp:send(Sock, Line).
+
+start_recv_multipart(TypeParams, App, Options, State) ->
     Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
     PartHandler = proplists:get_value(part_handler, Options),
