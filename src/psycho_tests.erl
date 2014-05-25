@@ -8,7 +8,8 @@ run() ->
     test_routes(),
     test_crypto(),
     test_validate(),
-    test_multipart().
+    test_simple_multipart(),
+    test_more_multipart().
 
 test_parse_request_path() ->
     io:format("parse_request_path: "),
@@ -154,8 +155,33 @@ test_validate() ->
 
     io:format("OK~n").
 
-test_multipart() ->
-    io:format("multipart: "),
+test_simple_multipart() ->
+    io:format("simple_multipart: "),
+
+    Boundary = <<"------------------------65d0128e83f480f8">>,
+    Data =
+        [<<"--------------------------65d0128e83f480f8\r\n"
+           "Content-Disposition: form-data; name=\"msg\";"
+           " filename=\"msg.txt\"\r\n"
+           "Content-Type: text/plain\r\n"
+           "\r\n"
+           "Hi there.\n"
+           "\r\n"
+           "--------------------------65d0128e83f480f8--\r\n">>,
+        <<>>],
+
+    All = apply_data(Data, psycho_multipart:new(Boundary)),
+
+    [{"msg",
+      {[{"Content-Disposition",
+         "form-data; name=\"msg\"; filename=\"msg.txt\""},
+        {"Content-Type","text/plain"}],
+       <<"Hi there.\n">>}}] = psycho_multipart:form_data(All),
+
+    io:format("OK~n").
+
+test_more_multipart() ->
+    io:format("more_multipart: "),
 
     New = fun(Boundary) -> psycho_multipart:new(Boundary) end,
     New3 =
@@ -180,9 +206,13 @@ test_multipart() ->
          <<"plication/octet-stream\r\n\r\nThis\nis\nfile 2.\n\r\n----">>,
          <<"--WebKitFormBoundaryDr6DS6tqR3sKzPnI--\r\n">>],
 
+    %% Same as Data but as a single chunk
+    Data2 = [iolist_to_binary(Data), <<>>, <<>>, <<>>, <<>>],
+
     %% Handle all parts (default behavior with no callback)
 
     All = apply_data(Data, New(Boundary)),
+    All = apply_data(Data2, New(Boundary)),
 
     [{"name",
       {[{"Content-Disposition","form-data; name=\"name\""}],
