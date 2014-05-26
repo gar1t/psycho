@@ -50,12 +50,12 @@ handle_boundary_split([Window], Data, MP) ->
 handle_boundary_split([<<>>, After], _Data, MP) ->
     try_headers(After, After, MP);
 handle_boundary_split([Before, After], _Data, MP) ->
-    try_headers(After, After, finalize_part(replace_last(Before, MP))).
+    try_headers(After, After, finalize_part(handle_last_data(Before, MP))).
 
 handle_window(Window, Data, #mp{headers=pending}=MP) ->
     try_headers(Window, Data, MP);
 handle_window(_Window, Data, MP) ->
-    push_data(Data, MP).
+    handle_body_data(Data, MP).
 
 try_headers(Data, MP) ->
     try_headers(search_window(Data, MP), Data, MP).
@@ -109,27 +109,30 @@ form_data_name(Headers) ->
 handle_form_data_name_re({match, [Name]}) -> Name;
 handle_form_data_name_re(nomatch) -> <<>>.
 
-handle_finalized_headers(Name, Headers, MP) ->
-    MP#mp{name=Name, headers=Headers}.
+handle_finalized_headers(Name, Headers, #mp{cb=undefined}=MP) ->
+    MP#mp{name=Name, headers=Headers};
+handle_finalized_headers(Name, Headers, #mp{cb=Callback, cb_data=CbData}=MP) ->
+    Result = Callback({part, Name, Headers}, CbData),
+    handle_part_cb(Result, Name, Headers, MP).
+
+handle_part_cb({continue, CbData}, Name, Headers, MP) ->
+    MP#mp{name=Name, headers=Headers, cb_data=CbData};
+handle_part_cb({continue, {Name, Headers}, CbData}, _, _, MP) ->
+    MP#mp{name=Name, headers=Headers, cb_data=CbData};
+handle_part_cb({drop, CbData}, Name, _, MP) ->
+    MP#mp{name=Name, headers=dropping, cb_data=CbData}.
 
 start_body(Data, MP) ->
     try_boundary(Data, MP#mp{last=undefined, acc=[]}).
 
-finalize_part(MP) ->
-    reset_part_attrs(add_part(new_part(MP), MP)).
-
-push_data(Data, #mp{last=undefined}=MP) ->
-    MP#mp{last=Data};
-push_data(Data, #mp{last=Last, acc=Acc}=MP) ->
-    MP#mp{last=Data, acc=[Last|Acc]}.
-
-new_part(#mp{name=Name, headers=Headers}=MP) ->
-    {Name, {Headers, body(MP)}}.
-
-body(MP) -> iolist_to_binary(body_parts(MP)).
-
-body_parts(#mp{last=Last, acc=Acc}) ->
-    lists:reverse([strip_trailing_crlf(Last)|Acc]).
+handle_last_data(Data, #mp{cb=undefined}=MP) ->
+    replace_last(strip_trailing_crlf(Data), MP);
+handle_last_data(_Data, #mp{headers=dropping}=MP) ->
+    MP;
+handle_last_data(Data, #mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
+    Stripped = strip_trailing_crlf(Data),
+    Result = Callback({data, Name, Stripped}, CbData),
+    handle_last_data_cb(Result, Stripped, MP).
 
 strip_trailing_crlf(Bin) ->
     N = size(Bin) - 2,
@@ -138,11 +141,63 @@ strip_trailing_crlf(Bin) ->
         _ -> Bin
     end.
 
-add_part(Part, #mp{parts=Parts}=MP) ->
-    MP#mp{parts=[Part|Parts]}.
+handle_last_data_cb({continue, CbData}, Data, MP) ->
+    replace_last(Data, MP#mp{cb_data=CbData});
+handle_last_data_cb({continue, Data, CbData}, _, MP) ->
+    replace_last(Data, MP#mp{cb_data=CbData});
+handle_last_data_cb({drop, CbData}, Data, MP) ->
+    replace_last(Data, MP#mp{cb_data=CbData}).
+
+finalize_part(#mp{headers=dropping}=MP) ->
+    reset_part_attrs(MP);
+finalize_part(MP) ->
+    handle_finalized_part(new_part(MP), MP).
 
 reset_part_attrs(MP) ->
     MP#mp{name=undefined, headers=pending, last=undefined, acc=[]}.
+
+new_part(#mp{name=Name, headers=Headers, last=Last, acc=Acc}) ->
+    Body = iolist_to_binary(lists:reverse([Last|Acc])),
+    {Name, {Headers, Body}}.
+
+handle_finalized_part(Part, #mp{cb=undefined}=MP) ->
+    reset_part_attrs(add_part(Part, MP));
+handle_finalized_part(Part, #mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
+    Result = Callback({data, Name, eof}, CbData),
+    handle_eof_cb(Result, Part, MP).
+
+add_part(Part, #mp{parts=Parts}=MP) ->
+    MP#mp{parts=[Part|Parts]}.
+
+handle_eof_cb({continue, CbData}, Part, MP) ->
+    reset_part_attrs(add_part(Part, MP#mp{cb_data=CbData}));
+handle_eof_cb({drop, CbData}, _Part, MP) ->
+    reset_part_attrs(MP#mp{cb_data=CbData}).
+
+handle_body_data(Data, #mp{cb=undefined}=MP) ->
+    push_data(Data, MP);
+handle_body_data(Data, #mp{headers=dropping}=MP) ->
+    replace_last(Data, MP);
+handle_body_data(Data, #mp{last=undefined}=MP) ->
+    push_data(Data, MP);
+handle_body_data(Data, #mp{name=Name, last=Last, cb=Callback,
+                           cb_data=CbData}=MP) ->
+    %% We notify on the last data because we don't yet know what the
+    %% current data means
+    Result = Callback({data, Name, Last}, CbData),
+    handle_data_cb(Result, Data, MP).
+
+handle_data_cb({continue, CbData}, Data, MP) ->
+    push_data(Data, MP#mp{cb_data=CbData});
+handle_data_cb({continue, NewLast, CbData}, Data, MP) ->
+    push_data(Data, MP#mp{last=NewLast, cb_data=CbData});
+handle_data_cb({drop, CbData}, Data, MP) ->
+    replace_last(Data, MP#mp{cb_data=CbData}).
+
+push_data(Data, #mp{last=undefined}=MP) ->
+    MP#mp{last=Data};
+push_data(Data, #mp{last=Last, acc=Acc}=MP) ->
+    MP#mp{last=Data, acc=[Last|Acc]}.
 
 form_data(#mp{parts=Parts}) ->
     lists:reverse(Parts).
