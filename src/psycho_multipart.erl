@@ -111,9 +111,11 @@ handle_form_data_name_re(nomatch) -> <<>>.
 
 handle_finalized_headers(Name, Headers, #mp{cb=undefined}=MP) ->
     MP#mp{name=Name, headers=Headers};
-handle_finalized_headers(Name, Headers, #mp{cb=Callback, cb_data=CbData}=MP) ->
-    Result = Callback({part, Name, Headers}, CbData),
-    handle_part_cb(Result, Name, Headers, MP).
+handle_finalized_headers(Name, Headers, MP) ->
+    handle_part_cb(part_cb(Name, Headers, MP), Name, Headers, MP).
+
+part_cb(Name, Headers, #mp{cb=Callback, cb_data=CbData}) ->
+    Callback({part, Name, Headers}, CbData).
 
 handle_part_cb({continue, CbData}, Name, Headers, MP) ->
     MP#mp{name=Name, headers=Headers, cb_data=CbData};
@@ -129,10 +131,12 @@ handle_last_data(Data, #mp{cb=undefined}=MP) ->
     replace_last(strip_trailing_crlf(Data), MP);
 handle_last_data(_Data, #mp{headers=dropping}=MP) ->
     MP;
-handle_last_data(Data, #mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
+handle_last_data(Data, MP) ->
     Stripped = strip_trailing_crlf(Data),
-    Result = Callback({data, Name, Stripped}, CbData),
-    handle_last_data_cb(Result, Stripped, MP).
+    handle_last_data_cb(data_cb(Stripped, MP), Stripped, MP).
+
+data_cb(Data, #mp{name=Name, cb=Callback, cb_data=CbData}) ->
+    Callback({data, Name, Data}, CbData).
 
 strip_trailing_crlf(Bin) ->
     N = size(Bin) - 2,
@@ -143,10 +147,10 @@ strip_trailing_crlf(Bin) ->
 
 handle_last_data_cb({continue, CbData}, Data, MP) ->
     replace_last(Data, MP#mp{cb_data=CbData});
-handle_last_data_cb({continue, Data, CbData}, _, MP) ->
-    replace_last(Data, MP#mp{cb_data=CbData});
-handle_last_data_cb({drop, CbData}, Data, MP) ->
-    replace_last(Data, MP#mp{cb_data=CbData}).
+handle_last_data_cb({continue, OtherData, CbData}, _Data, MP) ->
+    replace_last(OtherData, MP#mp{cb_data=CbData});
+handle_last_data_cb({drop, CbData}, _Data, MP) ->
+    MP#mp{cb_data=CbData}.
 
 finalize_part(#mp{headers=dropping}=MP) ->
     reset_part_attrs(MP);
@@ -162,9 +166,11 @@ new_part(#mp{name=Name, headers=Headers, last=Last, acc=Acc}) ->
 
 handle_finalized_part(Part, #mp{cb=undefined}=MP) ->
     reset_part_attrs(add_part(Part, MP));
-handle_finalized_part(Part, #mp{name=Name, cb=Callback, cb_data=CbData}=MP) ->
-    Result = Callback({data, Name, eof}, CbData),
-    handle_eof_cb(Result, Part, MP).
+handle_finalized_part(Part, MP) ->
+    handle_eof_cb(eof_cb(MP), Part, MP).
+
+eof_cb(#mp{cb=Callback, cb_data=CbData, name=Name}) ->
+    Callback({data, Name, eof}, CbData).
 
 add_part(Part, #mp{parts=Parts}=MP) ->
     MP#mp{parts=[Part|Parts]}.
@@ -180,12 +186,8 @@ handle_body_data(Data, #mp{headers=dropping}=MP) ->
     replace_last(Data, MP);
 handle_body_data(Data, #mp{last=undefined}=MP) ->
     push_data(Data, MP);
-handle_body_data(Data, #mp{name=Name, last=Last, cb=Callback,
-                           cb_data=CbData}=MP) ->
-    %% We notify on the last data because we don't yet know what the
-    %% current data means
-    Result = Callback({data, Name, Last}, CbData),
-    handle_data_cb(Result, Data, MP).
+handle_body_data(Data, #mp{last=Last}=MP) ->
+    handle_data_cb(data_cb(Last, MP), Data, MP).
 
 handle_data_cb({continue, CbData}, Data, MP) ->
     push_data(Data, MP#mp{cb_data=CbData});
