@@ -8,8 +8,9 @@ run() ->
     test_routes(),
     test_crypto(),
     test_validate(),
-    test_simple_multipart(),
-    test_more_multipart().
+    test_multipart_simplest(),
+    test_multipart_splits(),
+    test_multipart_multiple().
 
 test_parse_request_path() ->
     io:format("parse_request_path: "),
@@ -155,8 +156,15 @@ test_validate() ->
 
     io:format("OK~n").
 
-test_simple_multipart() ->
-    io:format("simple_multipart: "),
+test_multipart_simplest() ->
+    io:format("multipart_simplest: "),
+
+    %% This is the simplest test case of a multipart processing:
+    %%
+    %% - A single part (content generated from curl)
+    %% - No filtering via callbacks
+    %% - Assert the resulting form data
+    %%
 
     Boundary = <<"------------------------65d0128e83f480f8">>,
     Data =
@@ -167,8 +175,7 @@ test_simple_multipart() ->
            "\r\n"
            "Hi there.\n"
            "\r\n"
-           "--------------------------65d0128e83f480f8--\r\n">>,
-        <<>>],
+           "--------------------------65d0128e83f480f8--\r\n">>],
 
     All = apply_data(Data, psycho_multipart:new(Boundary)),
 
@@ -180,19 +187,102 @@ test_simple_multipart() ->
 
     io:format("OK~n").
 
-test_more_multipart() ->
-    io:format("more_multipart: "),
+test_multipart_splits() ->
+    io:format("multipart_splits: "),
 
-    New = fun(Boundary) -> psycho_multipart:new(Boundary) end,
-    New3 =
-        fun(Boundary, Callback, Data) ->
-                psycho_multipart:new(Boundary, Callback, Data)
-        end,
-    FormData = fun(MP) -> psycho_multipart:form_data(MP) end,
-    UserData = fun(MP) -> psycho_multipart:user_data(MP) end,
+    %% This test is uses the same data as simplest above but splits it
+    %% across various divisions to show that the processing is not
+    %% sensitive to how data is fed during processing.
+
+    Boundary = <<"------------------------65d0128e83f480f8">>,
+    MP = psycho_multipart:new(Boundary),
+
+    Data =
+        [<<"--------------------------65d0128e83f480f8\r\n"
+           "Content-Disposition: form-data; name=\"msg\";"
+           " filename=\"msg.txt\"\r\n"
+           "Content-Type: text/plain\r\n"
+           "\r\n"
+           "Hi there.\n"
+           "\r\n"
+           "--------------------------65d0128e83f480f8--\r\n">>],
+
+    All = apply_data(Data, MP),
+
+    [{"msg",
+      {[{"Content-Disposition",
+         "form-data; name=\"msg\"; filename=\"msg.txt\""},
+        {"Content-Type","text/plain"}],
+       <<"Hi there.\n">>}}] = psycho_multipart:form_data(All),
+
+    %% Split in the middle of the headers
+
+    Split1 =
+        [<<"--------------------------65d0128e83f480f8\r\n"
+           "Content-Disposition: form-data; name=\"msg\";"
+           " filename=\"msg.t">>,
+         <<"xt\"\r\n"
+           "Content-Type: text/plain\r\n"
+           "\r\n"
+           "Hi there.\n"
+           "\r\n"
+           "--------------------------65d0128e83f480f8--\r\n">>],
+
+    All = apply_data(Split1, MP),
+
+    %% Split in the middle of the header delimiter
+
+    Split2 =
+        [<<"--------------------------65d0128e83f480f8\r\n"
+           "Content-Disposition: form-data; name=\"msg\";"
+           " filename=\"msg.txt\"\r\n"
+           "Content-Type: text/plain\r\n">>,
+         <<"\r\n"
+           "Hi there.\n"
+           "\r\n"
+           "--------------------------65d0128e83f480f8--\r\n">>],
+
+    All = apply_data(Split2, MP),
+
+    %% Split in the middle of the body
+
+    Split3 =
+        [<<"--------------------------65d0128e83f480f8\r\n"
+           "Content-Disposition: form-data; name=\"msg\";"
+           " filename=\"msg.txt\"\r\n"
+           "Content-Type: text/plain\r\n"
+           "\r\n"
+           "Hi th">>,
+         <<"ere.\n"
+           "\r\n"
+           "--------------------------65d0128e83f480f8--\r\n">>],
+
+    All = apply_data(Split3, MP),
+
+    %% Split both headers and body
+
+    Split4 =
+        [<<"--------------------------65d0128e83f480f8\r\n"
+           "Content-Disposition: form-data; name=\"msg\";"
+           " filename=\"msg.">>,
+         <<"txt\"\r\n"
+           "Content-Type: text/plain\r\n">>,
+         <<"\r\n"
+           "Hi there.\n">>,
+         <<"\r\n"
+           "--------------------------65d0128e83f480f8--\r\n">>],
+
+    All = apply_data(Split4, MP),
+
+    io:format("OK~n").    
+
+test_multipart_multiple() ->
+    io:format("multipart_multiple: "),
 
     Boundary = <<"----WebKitFormBoundaryDr6DS6tqR3sKzPnI">>,
-    Data =
+    MP = psycho_multipart:new(Boundary),
+
+    Split =
         [<<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
          <<"t-Disposition: form-data; name=\"name\"\r\n\r\nBob\r\n">>,
          <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
@@ -206,13 +296,10 @@ test_more_multipart() ->
          <<"plication/octet-stream\r\n\r\nThis\nis\nfile 2.\n\r\n----">>,
          <<"--WebKitFormBoundaryDr6DS6tqR3sKzPnI--\r\n">>],
 
-    %% Same as Data but as a single chunk
-    Data2 = [iolist_to_binary(Data), <<>>, <<>>, <<>>, <<>>],
+    Data = [iolist_to_binary(Split)],
 
-    %% Handle all parts (default behavior with no callback)
-
-    All = apply_data(Data, New(Boundary)),
-    All = apply_data(Data2, New(Boundary)),
+    All = apply_data(Split, MP),
+    All = apply_data(Data, MP),
 
     [{"name",
       {[{"Content-Disposition","form-data; name=\"name\""}],
@@ -229,98 +316,151 @@ test_more_multipart() ->
       {[{"Content-Disposition","form-data; name=\"file2\"; "
          "filename=\"file2\""},
         {"Content-Type","application/octet-stream"}],
-       <<"This\nis\nfile 2.\n">>}}] = FormData(All),
-
-    %% Use part handler callback to drop the two files
-
-    DropFilesHandler = drop_handler(["file1", "file2"]),
-    DropFiles = apply_data(Data, New3(Boundary, DropFilesHandler, [])),
-
-    [{"name",
-      {[{"Content-Disposition","form-data; name=\"name\""}],
-       <<"Bob">>}},
-     {"awesome",
-      {[{"Content-Disposition","form-data; name=\"awesome\""}],
-       <<"on">>}}] = FormData(DropFiles),
-
-    [{keep,"name"},
-     {data,"name",<<"Bob">>},
-     {data,"name",<<>>},
-     {keep,"awesome"},
-     {data,"awesome",<<"on">>},
-     {data,"awesome",<<>>},
-     {drop,"file1"},
-     {drop,"file2"}] = lists:reverse(UserData(DropFiles)),
-
-    %% Use a part handler to keep only the two files
-
-    KeepFilesHandler = drop_handler(["name", "awesome"]),
-    KeepFiles = apply_data(Data, New3(Boundary, KeepFilesHandler, [])),
-
-    [{"file1",
-      {[{"Content-Disposition","form-data; name=\"file1\"; "
-         "filename=\"file1\""},
-        {"Content-Type","application/octet-stream"}],
-       <<"This is\nfile 1.\n">>}},
-     {"file2",
-      {[{"Content-Disposition","form-data; name=\"file2\"; "
-         "filename=\"file2\""},
-        {"Content-Type","application/octet-stream"}],
-       <<"This\nis\nfile 2.\n">>}}] = FormData(KeepFiles),
-
-    [{drop,"name"},
-     {drop,"awesome"},
-     {keep,"file1"},
-     {data,"file1",<<"This is\nfile 1.\n">>},
-     {data,"file1",<<>>},
-     {keep,"file2"},
-     {data,"file2",<<"This\nis\nfile 2.\n">>},
-     {data,"file2",<<>>}] = lists:reverse(UserData(KeepFiles)),
-
-    %% Use a part handler to modify a part
-
-    ModAwesomeHandler = rename_handler("awesome", "lame"),
-    ModAwesome = apply_data(Data, New3(Boundary, ModAwesomeHandler, [])),
-
-    [{"lame",
-      {[{"Content-Disposition","form-data; name=\"lame\""}],
-       <<"on">>}}] = FormData(ModAwesome),
-
-    [{drop,"name"},
-     {rename,"awesome","lame"},
-     {data,"lame",<<"on">>},
-     {data,"lame",<<>>},
-     {drop,"file1"},
-     {drop,"file2"}] = lists:reverse(UserData(ModAwesome)),
+       <<"This\nis\nfile 2.\n">>}}] = psycho_multipart:form_data(All),
 
     io:format("OK~n").
 
-drop_handler(Drop) ->
-    fun(Part, Acc) -> handle_drop_part(Part, Acc, Drop) end.
+%% test_more_multipart() ->
+%%     io:format("more_multipart: "),
 
-handle_drop_part({part, Name, _Headers}, Acc, Drop) ->
-    maybe_drop_part(lists:member(Name, Drop), Name, Acc);
-handle_drop_part(Part, Acc, _Drop) ->
-    {continue, [Part|Acc]}.
+%%     New = fun(Boundary) -> psycho_multipart:new(Boundary) end,
+%%     New3 =
+%%         fun(Boundary, Callback, Data) ->
+%%                 psycho_multipart:new(Boundary, Callback, Data)
+%%         end,
+%%     FormData = fun(MP) -> psycho_multipart:form_data(MP) end,
+%%     UserData = fun(MP) -> psycho_multipart:user_data(MP) end,
 
-maybe_drop_part(true, Name, Acc) ->
-    {drop, [{drop, Name}|Acc]};
-maybe_drop_part(false, Name, Acc) ->
-    {continue, [{keep, Name}|Acc]}.
+%%     Boundary = <<"----WebKitFormBoundaryDr6DS6tqR3sKzPnI">>,
+%%     Data =
+%%         [<<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
+%%          <<"t-Disposition: form-data; name=\"name\"\r\n\r\nBob\r\n">>,
+%%          <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
+%%          <<"t-Disposition: form-data; name=\"awesome\"\r\n\r\non\r\n">>,
+%%          <<"------WebKitFormBoundaryDr6DS6tqR3sKzPnI\r\nConten">>,
+%%          <<"t-Disposition: form-data; name=\"file1\"; filename">>,
+%%          <<"=\"file1\"\r\nContent-Type: application/octet-stream">>,
+%%          <<"\r\n\r\nThis is\nfile 1.\n\r\n------WebKitFormBoundaryDr">>,
+%%          <<"6DS6tqR3sKzPnI\r\nContent-Disposition: form-data; ">>,
+%%          <<"name=\"file2\"; filename=\"file2\"\r\nContent-Type: ap">>,
+%%          <<"plication/octet-stream\r\n\r\nThis\nis\nfile 2.\n\r\n----">>,
+%%          <<"--WebKitFormBoundaryDr6DS6tqR3sKzPnI--\r\n">>],
 
-rename_handler(From, To) ->
-    fun(Part, Acc) -> handle_rename(Part, Acc, From, To) end.
+%%     %% Same as Data but as a single chunk
+%%     Data2 = [iolist_to_binary(Data)],
 
-handle_rename({part, Name, _Headers}, Acc, From, To) ->
-    maybe_rename_part(Name == From, Acc, Name, To);
-handle_rename(Part, Acc, _From, _To) ->
-    {continue, [Part|Acc]}.
+%%     %% Handle all parts (default behavior with no callback)
 
-maybe_rename_part(true, Acc, From, To) ->
-    Headers = [{"Content-Disposition", "form-data; name=\"" ++ To ++ "\""}],
-    {continue, {To, Headers}, [{rename, From, To}|Acc]};
-maybe_rename_part(false, Acc, Name, _) ->
-    {drop, [{drop, Name}|Acc]}.
+%%     All = apply_data(Data, New(Boundary)),
+%%     All = apply_data(Data2, New(Boundary)),
+
+%%     [{"name",
+%%       {[{"Content-Disposition","form-data; name=\"name\""}],
+%%        <<"Bob">>}},
+%%      {"awesome",
+%%       {[{"Content-Disposition","form-data; name=\"awesome\""}],
+%%        <<"on">>}},
+%%      {"file1",
+%%       {[{"Content-Disposition","form-data; name=\"file1\"; "
+%%          "filename=\"file1\""},
+%%         {"Content-Type","application/octet-stream"}],
+%%        <<"This is\nfile 1.\n">>}},
+%%      {"file2",
+%%       {[{"Content-Disposition","form-data; name=\"file2\"; "
+%%          "filename=\"file2\""},
+%%         {"Content-Type","application/octet-stream"}],
+%%        <<"This\nis\nfile 2.\n">>}}] = FormData(All),
+
+%%     %% Use part handler callback to drop the two files
+
+%%     DropFilesHandler = drop_handler(["file1", "file2"]),
+%%     DropFiles = apply_data(Data, New3(Boundary, DropFilesHandler, [])),
+
+%%     [{"name",
+%%       {[{"Content-Disposition","form-data; name=\"name\""}],
+%%        <<"Bob">>}},
+%%      {"awesome",
+%%       {[{"Content-Disposition","form-data; name=\"awesome\""}],
+%%        <<"on">>}}] = FormData(DropFiles),
+
+%%     [{keep,"name"},
+%%      {data,"name",<<"Bob">>},
+%%      {data,"name",<<>>},
+%%      {keep,"awesome"},
+%%      {data,"awesome",<<"on">>},
+%%      {data,"awesome",<<>>},
+%%      {drop,"file1"},
+%%      {drop,"file2"}] = lists:reverse(UserData(DropFiles)),
+
+%%     %% Use a part handler to keep only the two files
+
+%%     KeepFilesHandler = drop_handler(["name", "awesome"]),
+%%     KeepFiles = apply_data(Data, New3(Boundary, KeepFilesHandler, [])),
+
+%%     [{"file1",
+%%       {[{"Content-Disposition","form-data; name=\"file1\"; "
+%%          "filename=\"file1\""},
+%%         {"Content-Type","application/octet-stream"}],
+%%        <<"This is\nfile 1.\n">>}},
+%%      {"file2",
+%%       {[{"Content-Disposition","form-data; name=\"file2\"; "
+%%          "filename=\"file2\""},
+%%         {"Content-Type","application/octet-stream"}],
+%%        <<"This\nis\nfile 2.\n">>}}] = FormData(KeepFiles),
+
+%%     [{drop,"name"},
+%%      {drop,"awesome"},
+%%      {keep,"file1"},
+%%      {data,"file1",<<"This is\nfile 1.\n">>},
+%%      {data,"file1",<<>>},
+%%      {keep,"file2"},
+%%      {data,"file2",<<"This\nis\nfile 2.\n">>},
+%%      {data,"file2",<<>>}] = lists:reverse(UserData(KeepFiles)),
+
+%%     %% Use a part handler to modify a part
+
+%%     ModAwesomeHandler = rename_handler("awesome", "lame"),
+%%     ModAwesome = apply_data(Data, New3(Boundary, ModAwesomeHandler, [])),
+
+%%     [{"lame",
+%%       {[{"Content-Disposition","form-data; name=\"lame\""}],
+%%        <<"on">>}}] = FormData(ModAwesome),
+
+%%     [{drop,"name"},
+%%      {rename,"awesome","lame"},
+%%      {data,"lame",<<"on">>},
+%%      {data,"lame",<<>>},
+%%      {drop,"file1"},
+%%      {drop,"file2"}] = lists:reverse(UserData(ModAwesome)),
+
+%%     io:format("OK~n").
+
+%% drop_handler(Drop) ->
+%%     fun(Part, Acc) -> handle_drop_part(Part, Acc, Drop) end.
+
+%% handle_drop_part({part, Name, _Headers}, Acc, Drop) ->
+%%     maybe_drop_part(lists:member(Name, Drop), Name, Acc);
+%% handle_drop_part(Part, Acc, _Drop) ->
+%%     {continue, [Part|Acc]}.
+
+%% maybe_drop_part(true, Name, Acc) ->
+%%     {drop, [{drop, Name}|Acc]};
+%% maybe_drop_part(false, Name, Acc) ->
+%%     {continue, [{keep, Name}|Acc]}.
+
+%% rename_handler(From, To) ->
+%%     fun(Part, Acc) -> handle_rename(Part, Acc, From, To) end.
+
+%% handle_rename({part, Name, _Headers}, Acc, From, To) ->
+%%     maybe_rename_part(Name == From, Acc, Name, To);
+%% handle_rename(Part, Acc, _From, _To) ->
+%%     {continue, [Part|Acc]}.
+
+%% maybe_rename_part(true, Acc, From, To) ->
+%%     Headers = [{"Content-Disposition", "form-data; name=\"" ++ To ++ "\""}],
+%%     {continue, {To, Headers}, [{rename, From, To}|Acc]};
+%% maybe_rename_part(false, Acc, Name, _) ->
+%%     {drop, [{drop, Name}|Acc]}.
 
 apply_data([Data|Rest], MP) ->
     apply_data(Rest, psycho_multipart:data(Data, MP));
