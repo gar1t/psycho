@@ -125,9 +125,8 @@ test_validate() ->
 
     V = fun(Data, Schema) -> psycho_util:validate(Data, Schema) end,
 
-    %% Empty / base case (first arg is passed through on pass)
+    %% Empty / base case
     {ok, []} = V([], []),
-    {ok, data_pass_through} = V(data_pass_through, []),
 
     %% required
     {error, {"foo", required}} = V([], [{"foo", [required]}]),
@@ -154,6 +153,18 @@ test_validate() ->
     {error, {"foo", {min_length, 4}}} =
         V([{"foo", "FOO"}], [{"foo", [{min_length, 4}]}]),
     {ok, _} = V([{"foo", "FOO"}], [{"foo", [{min_length, 3}]}]),
+
+    %% Conversions
+
+    {ok, [{"foo", 123}]} = V([{"foo", "123"}], [{"foo", [integer]}]),
+    {ok, [{"foo", 123.0}]} = V([{"foo", "123"}], [{"foo", [float]}]),
+    {ok, [{"foo", 123.456}]} = V([{"foo", "123.456"}], [{"foo", [float]}]),
+    {ok, [{"foo", 123}]} = V([{"foo", "123"}], [{"foo", [number]}]),
+    {ok, [{"foo", 123.456}]} = V([{"foo", "123.456"}], [{"foo", [number]}]),
+
+    {error, {"foo", integer}} = V([{"foo", "xxx"}], [{"foo", [integer]}]),
+    {error, {"foo", float}} = V([{"foo", "xxx"}], [{"foo", [float]}]),
+    {error, {"foo", number}} = V([{"foo", "xxx"}], [{"foo", [number]}]),
 
     io:format("OK~n").
 

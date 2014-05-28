@@ -185,20 +185,26 @@ unpad(Bin) ->
 %%% Form validation
 %%%===================================================================
 
-validate(Data, [{Field, Checks}|Rest]) ->
-    Value = proplists:get_value(Field, Data),
+%% TODO: This validation scheme is incomplete. Add more checks (e.g.
+%% max_length, pattern, etc.) and possibly more conversion.
+
+validate(Data, Schema) ->
+    validate(Data, Schema, []).
+
+validate(DataIn, [{Field, Checks}|Rest], DataOut) ->
+    Value = proplists:get_value(Field, DataIn),
     handle_apply_checks(
-      apply_checks(Value, Checks, Field, Data),
-      Data, Rest);
-validate(Data, []) ->
-    {ok, Data}.
+      apply_checks(Value, Checks, Field, DataIn),
+      DataIn, Rest, DataOut);
+validate(_DataIn, [], DataOut) ->
+    {ok, DataOut}.
 
 apply_checks(Value, [Check|Rest], Field, Data) ->
     handle_apply_check(
       apply_check(Value, Check, Data),
       Check, Value, Rest, Field, Data);
-apply_checks(_Value, [], _Field, _Data) ->
-    ok.
+apply_checks(Value, [], Field, _Data) ->
+    {ok, {Field, Value}}.
 
 apply_check(Value, required, _Data) ->
     Value /= undefined;
@@ -206,19 +212,58 @@ apply_check(Value, {must_equal, {field, Field}}, Data) ->
     Value == proplists:get_value(Field, Data);
 apply_check(Value, {must_equal, Target}, _Data) ->
     Value == Target;
+apply_check(Value, integer, _Data) ->
+    try_integer(Value);
+apply_check(Value, float, _Data) ->
+    try_float(Value);
+apply_check(Value, number, _Data) ->
+    try_number(Value);
 apply_check(Value, {min_length, MinLength}, _Data) ->
     Value /= undefined andalso iolist_size(Value) >= MinLength;
 apply_check(_Value, Check, _Data) ->
     error({invalid_check, Check}).
 
+try_integer(Value) ->
+    try list_to_integer(Value) of
+        I -> {true, I}
+    catch
+        _:_ -> false
+    end.
+
+try_float(Value) ->
+    try list_to_float(Value) of
+        F -> {true, F}
+    catch
+        _:_ ->
+            try list_to_integer(Value) of
+                I -> {true, float(I)}
+            catch
+                _:_ -> false
+            end
+    end.
+
+try_number(Value) ->
+    try list_to_integer(Value) of
+        I -> {true, I}
+    catch
+        _:_ ->
+            try list_to_float(Value) of
+                F -> {true, F}
+            catch
+                _:_ -> false
+            end
+    end.
+
 handle_apply_check(true, _Check, Value, Rest, Field, Data) ->
     apply_checks(Value, Rest, Field, Data);
+handle_apply_check({true, NewValue}, _Check, _Value, Rest, Field, Data) ->
+    apply_checks(NewValue, Rest, Field, Data);
 handle_apply_check(false, Check, _Value, _Rest, Field, _Data) ->
     {error, {Field, Check}}.
 
-handle_apply_checks(ok, Data, Rest) ->
-    validate(Data, Rest);
-handle_apply_checks({error, Err}, _Data, _Rest) ->
+handle_apply_checks({ok, Validated}, DataIn, Rest, DataOut) ->
+    validate(DataIn, Rest, [Validated|DataOut]);
+handle_apply_checks({error, Err}, _DataIn, _Rest, _DataOut) ->
     {error, Err}.
 
 %% TODO: this is misconceived hard-coded EN -- where should this be?
