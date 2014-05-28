@@ -263,9 +263,12 @@ handle_apply_check(false, Check, _Value, _Rest, Field, _Data) ->
     {error, {Field, Check}}.
 
 handle_apply_checks({ok, Validated}, DataIn, Rest, DataOut) ->
-    validate(DataIn, Rest, [Validated|DataOut]);
+    validate(DataIn, Rest, maybe_add_validated(Validated, DataOut));
 handle_apply_checks({error, Err}, _DataIn, _Rest, _DataOut) ->
     {error, Err}.
+
+maybe_add_validated({_, undefined}, Data) -> Data;
+maybe_add_validated(Validated, Data) -> [Validated|Data].
 
 %% TODO: this is misconceived hard-coded EN -- where should this be?
 format_validate_error({Field, required}) ->

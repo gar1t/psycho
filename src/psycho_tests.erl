@@ -126,18 +126,22 @@ test_validate() ->
     V = fun(Data, Schema) -> psycho_util:validate(Data, Schema) end,
 
     %% Empty / base case
+
     {ok, []} = V([], []),
 
     %% required
+
     {error, {"foo", required}} = V([], [{"foo", [required]}]),
     {ok, _} = V([{"foo", "FOO"}], [{"foo", [required]}]),
 
     %% must_equal, literal
+
     {error, {"foo", {must_equal, "FOO"}}} =
         V([], [{"foo", [{must_equal, "FOO"}]}]),
     {ok, _} = V([{"foo", "FOO"}], [{"foo", [{must_equal, "FOO"}]}]),
 
     %% must_equal, reference to another field value
+
     {ok, _} = V([], [{"foo", [{must_equal, {field, "bar"}}]}]),
     {error, {"foo", {must_equal, {field,"bar"}}}} =
         V([{"foo", "FOO"}], [{"foo", [{must_equal, {field, "bar"}}]}]),
@@ -149,6 +153,7 @@ test_validate() ->
           [{"foo", [{must_equal, {field, "bar"}}]}]),
 
     %% min_length
+
     {error, {"foo", {min_length, 4}}} = V([], [{"foo", [{min_length, 4}]}]),
     {error, {"foo", {min_length, 4}}} =
         V([{"foo", "FOO"}], [{"foo", [{min_length, 4}]}]),
@@ -165,6 +170,10 @@ test_validate() ->
     {error, {"foo", integer}} = V([{"foo", "xxx"}], [{"foo", [integer]}]),
     {error, {"foo", float}} = V([{"foo", "xxx"}], [{"foo", [float]}]),
     {error, {"foo", number}} = V([{"foo", "xxx"}], [{"foo", [number]}]),
+
+    % Optional
+
+    {ok, []} = V([{"foo", "FOO"}], []),
 
     io:format("OK~n").
 
