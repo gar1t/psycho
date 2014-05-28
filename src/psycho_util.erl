@@ -213,6 +213,8 @@ apply_check(Value, {must_equal, {field, Field}}, Data) ->
     Value == proplists:get_value(Field, Data);
 apply_check(Value, {must_equal, Target}, _Data) ->
     Value == Target;
+apply_check(Value, binary, _Data) ->
+    {true, list_to_binary(Value)};
 apply_check(Value, integer, _Data) ->
     try_integer(Value);
 apply_check(Value, float, _Data) ->

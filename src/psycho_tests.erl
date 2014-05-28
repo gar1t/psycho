@@ -171,6 +171,8 @@ test_validate() ->
     {error, {"foo", float}} = V([{"foo", "xxx"}], [{"foo", [float]}]),
     {error, {"foo", number}} = V([{"foo", "xxx"}], [{"foo", [number]}]),
 
+    {ok, [{"foo", <<"FOO">>}]} = V([{"foo", "FOO"}], [{"foo", [binary]}]),
+
     % Optional
 
     {ok, []} = V([{"foo", "FOO"}], []),
