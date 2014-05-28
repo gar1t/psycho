@@ -12,7 +12,8 @@
          validate/2, format_validate_error/1,
          parse_content_disposition/1,
          content_disposition/2,
-         app_dir/1, priv_dir/1, priv_dir/2]).
+         app_dir/1, priv_dir/1, priv_dir/2,
+         dispatch_on/2]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -321,3 +322,28 @@ priv_dir(Mod) ->
 
 priv_dir(Mod, Subdir) ->
     filename:join(priv_dir(Mod), Subdir).
+
+%%%===================================================================
+%%% Dispatch helpers
+%%%===================================================================
+
+dispatch_on(Parts, Env0) ->
+    {ParsedPath, Env} = psycho_util:ensure_parsed_request_path(Env0),
+    [dispatch_part(Part, ParsedPath, Env) || Part <- Parts].
+
+dispatch_part(env, _ParsedPath, Env) ->
+    Env;
+dispatch_part(method, _ParsedPath, Env) ->
+    psycho:env_val(request_method, Env);
+dispatch_part(path, {Path, _, _}, _Env) ->
+    Path;
+dispatch_part(split_path, {Path, _, _}, _Env) ->
+    psycho_util:split_path(Path);
+dispatch_part(parsed_query_string, {_, _, ParsedQS}, _Env) ->
+    ParsedQS;
+dispatch_part(parsed_path, ParsedPath, _Env) ->
+    ParsedPath;
+dispatch_part(query_string, {_, QS, _}, _Env) ->
+    QS;
+dispatch_part(Other, _Path, _Env) ->
+    error({dispatch_part, Other}).
