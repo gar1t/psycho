@@ -28,7 +28,7 @@ project_skel() {
 	if [ "$file" != "$newname" ]; then
 	    mv "$file" "$newname"
 	fi
-	sed -i "s/app_id/$app_id/" "$newname"
+	sed -i -e "s/app_id/$app_id/" "$newname"
     done
 }
 
