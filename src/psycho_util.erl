@@ -226,6 +226,8 @@ apply_check({min_length, MinLength}, Value, _Data) ->
 apply_check(Check, _Value, _Data) ->
     error({invalid_check, Check}).
 
+try_integer(undefined) ->
+    {true, undefined};
 try_integer(Value) ->
     try list_to_integer(Value) of
         I -> {true, I}
@@ -233,6 +235,8 @@ try_integer(Value) ->
         _:_ -> false
     end.
 
+try_float(undefined) ->
+    {true, undefined};
 try_float(Value) ->
     try list_to_float(Value) of
         F -> {true, F}
@@ -245,6 +249,8 @@ try_float(Value) ->
             end
     end.
 
+try_number(undefined) ->
+    {true, undefined};
 try_number(Value) ->
     try list_to_integer(Value) of
         I -> {true, I}
