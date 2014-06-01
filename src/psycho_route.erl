@@ -12,12 +12,12 @@ create_app(Routes) ->
     create_app(Routes, []).
 
 create_app(Routes, Options) ->
-    fun(Env) -> route(Env, Routes, Options) end.
+    fun(Env) -> route(Routes, Env, Options) end.
 
-route(Env, Routes) ->
-    route(Env, Routes, []).
+route(Routes, Env) ->
+    route(Routes, Env, []).
 
-route(Env0, Routes, Options) ->
+route(Routes, Env0, Options) ->
     {{Path, _, _}, Env} = psycho_util:ensure_parsed_request_path(Env0),
     Method = psycho:env_val(request_method, Env),
     dispatch(Routes, Method, Path, Env, Options).
