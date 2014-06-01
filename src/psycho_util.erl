@@ -13,7 +13,7 @@
          parse_content_disposition/1,
          content_disposition/2,
          app_dir/1, priv_dir/1, priv_dir/2,
-         dispatch_on/2]).
+         dispatch_on/2, dispatch_app/2]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -352,3 +352,6 @@ dispatch_part(query_string, {_, QS, _}, _Env) ->
     QS;
 dispatch_part(Other, _Path, _Env) ->
     error({dispatch_part, Other}).
+
+dispatch_app(Dispatch, On) ->
+    fun(Env) -> apply(Dispatch, dispatch_on(On, Env)) end.
