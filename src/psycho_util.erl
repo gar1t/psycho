@@ -289,6 +289,11 @@ format_validate_error({Field, {min_length, MinLength}}) ->
     io_lib:format(
       "~s must be at least ~b characters long",
       [Field, MinLength]);
+format_validate_error({Field, NumType})
+  when NumType == integer;
+       NumType == float;
+       NumType == number ->
+    io_lib:format("~s must be a valid ~s", [Field, NumType]);
 format_validate_error(Other) ->
     io_lib:format("~p", [Other]).
 
