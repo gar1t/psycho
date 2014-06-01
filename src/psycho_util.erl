@@ -202,28 +202,28 @@ validate(_DataIn, [], DataOut) ->
 
 apply_checks(Value, [Check|Rest], Field, Data) ->
     handle_apply_check(
-      apply_check(Value, Check, Data),
+      apply_check(Check, Value, Data),
       Check, Value, Rest, Field, Data);
 apply_checks(Value, [], Field, _Data) ->
     {ok, {Field, Value}}.
 
-apply_check(Value, required, _Data) ->
+apply_check(required, Value, _Data) ->
     Value /= undefined;
-apply_check(Value, {must_equal, {field, Field}}, Data) ->
+apply_check({must_equal, {field, Field}}, Value, Data) ->
     Value == proplists:get_value(Field, Data);
-apply_check(Value, {must_equal, Target}, _Data) ->
+apply_check({must_equal, Target}, Value, _Data) ->
     Value == Target;
-apply_check(Value, binary, _Data) ->
+apply_check(binary, Value, _Data) ->
     {true, list_to_binary(Value)};
-apply_check(Value, integer, _Data) ->
+apply_check(integer, Value, _Data) ->
     try_integer(Value);
-apply_check(Value, float, _Data) ->
+apply_check(float, Value, _Data) ->
     try_float(Value);
-apply_check(Value, number, _Data) ->
+apply_check(number, Value, _Data) ->
     try_number(Value);
-apply_check(Value, {min_length, MinLength}, _Data) ->
+apply_check({min_length, MinLength}, Value, _Data) ->
     Value /= undefined andalso iolist_size(Value) >= MinLength;
-apply_check(_Value, Check, _Data) ->
+apply_check(Check, _Value, _Data) ->
     error({invalid_check, Check}).
 
 try_integer(Value) ->
