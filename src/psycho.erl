@@ -8,7 +8,7 @@
 
 call_app(M, Env) when is_atom(M) -> M:app(Env);
 call_app({M, F}, Env) -> M:F(Env);
-call_app({M, F, A}, Env) -> erlang:apply(M, F, [A ++ [Env]]);
+call_app({M, F, A}, Env) -> erlang:apply(M, F, A ++ [Env]);
 call_app(Fun, Env) -> Fun(Env).
 
 call_app_with_data(M, Env, Data) when is_atom(M) -> M:app(Data, Env);
