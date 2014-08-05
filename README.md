@@ -617,3 +617,7 @@ get_env(Name, Env) feels wrong.
 ## Misc
 
 https://github.com/benoitc/hackney_lib
+
+Use this for password middleware:
+
+http://alias.io/2010/01/store-passwords-safely-with-php-and-mysql/
