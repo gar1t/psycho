@@ -167,7 +167,7 @@ not an integer.
 > be used in the server's response. However, for compatibility with CGI we have
 > to keep the existing name.)
 
-Available in envion as `request_protocol`. Same semantics as WSGI.
+Available in environ as `request_protocol`. Same semantics as WSGI.
 
 #### HTTP_ Variables
 
@@ -285,7 +285,7 @@ Some ideas for managing state:
 - Use an external server
 
 Cookies are the best! You get nice round-trip state management that scales
-perfectly across millions and millions -- event *billions* -- of users.
+perfectly across millions and millions -- even *billions* -- of users.
 
 If you *need* to manage state across requests within Psycho, create a
 registered service in your OTP app and use it -- so simple!
