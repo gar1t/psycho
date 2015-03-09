@@ -1,6 +1,6 @@
 -module(psycho_multipart).
 
--export([new/3, data/2, form_data/1, user_data/1]).
+-export([new/1, new/3, data/2, form_data/1, user_data/1]).
 
 -record(mp, {boundary_delim, parts, name, headers, last, acc, cb, cb_data}).
 
