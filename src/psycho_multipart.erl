@@ -160,6 +160,8 @@ finalize_part(MP) ->
 reset_part_attrs(MP) ->
     MP#mp{name=undefined, headers=pending, last=undefined, acc=[]}.
 
+new_part(#mp{name=Name, headers=Headers, last=undefined, acc=[]}) ->
+    {Name, {Headers, <<>>}};
 new_part(#mp{name=Name, headers=Headers, last=Last, acc=Acc}) ->
     Body = iolist_to_binary(lists:reverse([Last|Acc])),
     {Name, {Headers, Body}}.
