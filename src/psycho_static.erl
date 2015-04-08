@@ -1,6 +1,7 @@
 -module(psycho_static).
 
--export([create_app/1, serve_file/1, serve_file/2]).
+-export([create_app/1, create_app/2,
+         serve_file/1, serve_file/2, serve_file/3]).
 
 -include_lib("kernel/include/file.hrl").
 -include("http_status.hrl").
@@ -19,11 +20,25 @@
 create_app(Dir) ->
     fun(Env) -> ?MODULE:serve_file(Dir, Env) end.
 
+create_app(Dir, "/" ++ StripPrefix) ->
+    create_app(Dir, StripPrefix);
+create_app(Dir, StripPrefix) ->
+    fun(Env) -> ?MODULE:serve_file(Dir, Env, StripPrefix) end.
+
 serve_file(Dir, Env) ->
     serve_file(requested_path(Dir, Env)).
 
+serve_file(Dir, Env, StripPrefix) ->
+    serve_file(requested_path(Dir, Env, StripPrefix)).
+
 requested_path(Dir, Env) ->
     filename:join(Dir, relative_request_path(Env)).
+
+requested_path(Dir, Env, StripPrefix) ->
+    case strip_prefix(StripPrefix, relative_request_path(Env)) of
+        {ok, Stripped} -> filename:join(Dir, Stripped);
+        error -> not_found()
+    end.
 
 relative_request_path(Env) ->
     strip_leading_slashes(request_path(Env)).
@@ -35,6 +50,12 @@ request_path(Env) ->
 strip_leading_slashes([$/|Rest]) -> strip_leading_slashes(Rest);
 strip_leading_slashes([$\\|Rest]) -> strip_leading_slashes(Rest);
 strip_leading_slashes(RelativePath) -> RelativePath.
+
+strip_prefix(Prefix, Path) ->
+    case lists:split(length(Prefix), Path) of
+        {Prefix, Stripped} -> {ok, Stripped};
+        _ -> error
+    end.
 
 serve_file(File) ->
     {Info, Path} = resolved_file_info(File),
