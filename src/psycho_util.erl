@@ -13,7 +13,8 @@
          parse_content_disposition/1,
          content_disposition/2,
          app_dir/1, priv_dir/1, priv_dir/2,
-         dispatch_on/2, dispatch_app/2]).
+         dispatch_on/2, dispatch_app/2,
+         chain_apps/1]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -361,8 +362,16 @@ dispatch_part(parsed_path, ParsedPath, _Env) ->
     ParsedPath;
 dispatch_part(query_string, {_, QS, _}, _Env) ->
     QS;
-dispatch_part(Other, _Path, _Env) ->
-    error({dispatch_part, Other}).
+dispatch_part(Literal, _Path, _Env) ->
+    Literal.
 
 dispatch_app(Dispatch, On) ->
     fun(Env) -> apply(Dispatch, dispatch_on(On, Env)) end.
+
+%%%===================================================================
+%%% Chain apps
+%%%===================================================================
+
+chain_apps(AppCreators) ->
+    [Base|Rest] = AppCreators,
+    lists:foldl(fun(NextApp, Prev) -> NextApp(Prev) end, Base(), Rest).
