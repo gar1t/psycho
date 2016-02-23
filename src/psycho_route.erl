@@ -35,12 +35,13 @@ dispatch([Invalid|_], _Method, _Path, _Env, _Options) ->
 dispatch([], _Method, _Path, Env, Options) ->
     psycho:call_app(not_found_handler(Options), Env).
 
-path_matches(Path, Path) -> true;
+path_matches(Path, Path)                  -> true;
 path_matches({starts_with, Prefix}, Path) -> starts_with(Prefix, Path);
-path_matches({matches, Regex}, Path) -> regex_matches(Regex, Path);
-path_matches({exact, Path}, Path) -> true;
-path_matches('_', _) -> true;
-path_matches(_, _) -> false.
+path_matches({matches, Regex}, Path)      -> regex_matches(Regex, Path);
+path_matches({exact, Path}, Path)         -> true;
+path_matches({any, Conditions}, Path)     -> any_matches(Conditions, Path);
+path_matches('_', _)                      -> true;
+path_matches(_, _)                        -> false.
 
 starts_with([Char|RestPrefix], [Char|RestStr]) ->
     starts_with(RestPrefix, RestStr);
@@ -49,6 +50,13 @@ starts_with(_, _) -> false.
 
 regex_matches(Regex, Str) ->
     match == re:run(Str, Regex, [{capture, none}]).
+
+any_matches([Condition|Rest], Path) ->
+    case path_matches(Condition, Path) of
+        true -> true;
+        false -> any_matches(Rest, Path)
+    end;
+any_matches([], _Path) -> false.
 
 maybe_dispatch(true, App, _Rest, _Method, _Path, Env, _Options) ->
     psycho:call_app(App, Env);
