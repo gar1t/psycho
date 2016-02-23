@@ -3,15 +3,21 @@
 -export([run/0]).
 
 run() ->
-    test_parse_request_path(),
-    test_ensure_parsed_request_path(),
-    test_routes(),
-    test_crypto(),
-    test_validate(),
-    test_multipart_simplest(),
-    test_multipart_splits(),
-    test_multipart_multiple(),
-    test_multipart_filtering().
+    try
+        test_parse_request_path(),
+        test_ensure_parsed_request_path(),
+        test_routes(),
+        test_crypto(),
+        test_validate(),
+        test_multipart_simplest(),
+        test_multipart_splits(),
+        test_multipart_multiple(),
+        test_multipart_filtering(),
+        test_dispatch_on()
+    catch
+        _:Err ->
+            io:format("ERROR~n~p~n~p~n", [Err, erlang:get_stacktrace()])
+    end.
 
 test_parse_request_path() ->
     io:format("parse_request_path: "),
@@ -79,21 +85,21 @@ test_routes() ->
          {"PUT", {starts_with, "/bam/"}, App(bam_other_put)}],
 
     %% Test routes to app proxies
-    root = R(Env("/"), Routes),
-    foo = R(Env("/foo"), Routes),
-    bar = R(Env("/bar"), Routes),
-    starts_with_bar = R(Env("/bar/baz"), Routes),
-    baz_bam = R(Env("/baz/bam"), Routes),
-    baz_bam = R(Env("/baz/BAM"), Routes),
-    baz_other = R(Env("/baz/bAm"), Routes),
-    baz_other = R(Env("/baz/bam/foo"), Routes),
-    not_found = R2(Env("baz/bam"), Routes, NotFoundHandlerOpts),
-    bam_post = R(Env2("POST", "/bam"), Routes),
-    bam_other_put = R(Env2("PUT", "/bam/foo"), Routes),
-    not_found = R2(Env("/not_handled"), Routes, NotFoundHandlerOpts),
+    root = R(Routes, Env("/")),
+    foo = R(Routes, Env("/foo")),
+    bar = R(Routes, Env("/bar")),
+    starts_with_bar = R(Routes, Env("/bar/baz")),
+    baz_bam = R(Routes, Env("/baz/bam")),
+    baz_bam = R(Routes, Env("/baz/BAM")),
+    baz_other = R(Routes, Env("/baz/bAm")),
+    baz_other = R(Routes, Env("/baz/bam/foo")),
+    not_found = R2(Routes, Env("baz/bam"), NotFoundHandlerOpts),
+    bam_post = R(Routes, Env2("POST", "/bam")),
+    bam_other_put = R(Routes, Env2("PUT", "/bam/foo")),
+    not_found = R2(Routes, Env("/not_handled"), NotFoundHandlerOpts),
 
     %% Default not found handler
-    {{404, "Not Found"}, _, _} = R(Env("/not_handled"), Routes),
+    {{404, "Not Found"}, _, _} = R(Routes, Env("/not_handled")),
 
     io:format("OK~n").
 
@@ -486,3 +492,29 @@ maybe_rename_part(false, Acc, Name, _) ->
 apply_data([Data|Rest], MP) ->
     apply_data(Rest, psycho_multipart:data(Data, MP));
 apply_data([], MP) -> MP.
+
+test_dispatch_on() ->
+    io:format("dispatch_on: "),
+    Env =
+        [{request_method, "GET"},
+         {request_path, "/foo/bar?a=1&b=2"},
+         {http_headers,
+          [{"Cookie", "A=1; B=2"}]}],
+    D = fun(Parts) -> psycho_util:dispatch_on(Parts, Env) end,
+
+    [Env]                      = D([env]),
+    ["GET"]                    = D([method]),
+    ["/foo/bar"]               = D([path]),
+    [["foo", "bar"]]           = D([split_path]),
+    [[{"a","1"}, {"b","2"}]]   = D([parsed_query_string]),
+    [{"/foo/bar",
+      "a=1&b=2",
+      [{"a","1"}, {"b","2"}]}] = D([parsed_path]),
+    ["a=1&b=2"]                = D([query_string]),
+    [[{"A","1"}, {"B","2"}]]   = D([parsed_cookie]),
+    ["Literal"]                = D(["Literal"]),
+    ["GET",
+     "/foo/bar",
+     [{"a","1"}, {"b","2"}]]   = D([method, path, parsed_query_string]),
+
+    io:format("OK~n").

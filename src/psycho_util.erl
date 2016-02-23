@@ -344,26 +344,34 @@ priv_dir(Mod, Subdir) ->
 %%% Dispatch helpers
 %%%===================================================================
 
-dispatch_on(Parts, Env0) ->
-    {ParsedPath, Env} = psycho_util:ensure_parsed_request_path(Env0),
-    [dispatch_part(Part, ParsedPath, Env) || Part <- Parts].
+dispatch_on(Parts, Env) ->
+    {_, AccResolved} = lists:foldl(fun dispatch_part_acc/2, {Env, []}, Parts),
+    lists:reverse(AccResolved).
 
-dispatch_part(env, _ParsedPath, Env) ->
-    Env;
-dispatch_part(method, _ParsedPath, Env) ->
-    psycho:env_val(request_method, Env);
-dispatch_part(path, {Path, _, _}, _Env) ->
-    Path;
-dispatch_part(split_path, {Path, _, _}, _Env) ->
-    psycho_util:split_path(Path);
-dispatch_part(parsed_query_string, {_, _, ParsedQS}, _Env) ->
-    ParsedQS;
-dispatch_part(parsed_path, ParsedPath, _Env) ->
-    ParsedPath;
-dispatch_part(query_string, {_, QS, _}, _Env) ->
-    QS;
-dispatch_part(Literal, _Path, _Env) ->
-    Literal.
+dispatch_part_acc(env, {Env, Acc}) ->
+    {Env, [Env|Acc]};
+dispatch_part_acc(method, {Env, Acc}) ->
+    {Env, [psycho:env_val(request_method, Env)|Acc]};
+dispatch_part_acc(path, {Env0, Acc}) ->
+    {{Path, _, _}, Env} = ensure_parsed_request_path(Env0),
+    {Env, [Path|Acc]};
+dispatch_part_acc(split_path, {Env0, Acc}) ->
+    {{Path, _, _}, Env} = ensure_parsed_request_path(Env0),
+    {Env, [psycho_util:split_path(Path)|Acc]};
+dispatch_part_acc(parsed_query_string, {Env0, Acc}) ->
+    {{_, _, ParsedQS}, Env} = ensure_parsed_request_path(Env0),
+    {Env, [ParsedQS|Acc]};
+dispatch_part_acc(parsed_path, {Env0, Acc}) ->
+    {ParsedPath, Env} = ensure_parsed_request_path(Env0),
+    {Env, [ParsedPath|Acc]};
+dispatch_part_acc(query_string, {Env0, Acc}) ->
+    {{_, QS, _}, Env} = ensure_parsed_request_path(Env0),
+    {Env, [QS|Acc]};
+dispatch_part_acc(parsed_cookie, {Env0, Acc}) ->
+    {ParsedCookie, Env} = ensure_parsed_cookie(Env0),
+    {Env, [ParsedCookie|Acc]};
+dispatch_part_acc(Literal, {Env, Acc}) ->
+    {Env, [Literal|Acc]}.
 
 dispatch_app(Dispatch, On) ->
     fun(Env) -> apply(Dispatch, dispatch_on(On, Env)) end.
