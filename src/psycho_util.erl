@@ -14,7 +14,8 @@
          content_disposition/2,
          app_dir/1, priv_dir/1, priv_dir/2,
          dispatch_on/2, dispatch_app/2,
-         chain_apps/1]).
+         chain_apps/1,
+         encode_url/2]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -383,3 +384,23 @@ dispatch_app(Dispatch, On) ->
 chain_apps(AppCreators) ->
     [Base|Rest] = AppCreators,
     lists:foldl(fun(NextApp, Prev) -> NextApp(Prev) end, Base(), Rest).
+
+%%%===================================================================
+%%% Encode URL
+%%%===================================================================
+
+encode_url(Base, Params) ->
+    [Base, $?|encode_url_params(Params, [])].
+
+encode_url_params([{Name, Val}|Rest], Acc) ->
+    encode_url_params(Rest, apply_encoded_param(Name, Val, Acc));
+encode_url_params([], Acc) ->
+    lists:reverse(Acc).
+
+apply_encoded_param(Name, Val, []) ->
+    [encode_param(Name, Val)];
+apply_encoded_param(Name, Val, Acc) ->
+    [encode_param(Name, Val), $&|Acc].
+
+encode_param(Name, Val) ->
+    [http_uri:encode(Name), $=, http_uri:encode(Val)].
