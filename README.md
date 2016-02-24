@@ -614,9 +614,20 @@ This asymmetry is slightly perturbing. Should it now be psycho:get_env?
 
 get_env(Name, Env) feels wrong.
 
-## Misc
+### Handling closed client connections
 
-https://github.com/benoitc/hackney_lib
+If a client decides to close the connection, a Psycho handler will
+crash during its response as it's asserting ok results from send
+calls. While this is arguably okay, it does result in crash logs for
+cases that are probably not worth logging.
+
+An approach is to wrap send calls and throw an exception (used for
+flow control in this case) to short-circuit the response and exit the
+process. This is at least explicit (rather than a crash from a
+badmatch), whether or not we decide this is a {stop, normal} or {stop,
+client_connection_closed} result.
+
+## Misc
 
 Use this for password middleware:
 
