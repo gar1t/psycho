@@ -403,4 +403,9 @@ apply_encoded_param(Name, Val, Acc) ->
     [encode_param(Name, Val), $&|Acc].
 
 encode_param(Name, Val) ->
-    [http_uri:encode(Name), $=, http_uri:encode(Val)].
+    [uri_part_encode(Name), $=, uri_part_encode(Val)].
+
+uri_part_encode(L) when is_list(L) ->
+    http_url:encode(L);
+uri_part_encode(B) when is_binary(B) ->
+    http_uri:encode(binary_to_list(B)).
