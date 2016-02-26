@@ -458,6 +458,7 @@ respond_headers([], Sock) ->
     ok = gen_tcp:send(Sock, ?CRLF).
 
 header_value(L) when is_list(L) -> L;
+header_value(B) when is_binary(B) -> B;
 header_value(I) when is_integer(I) -> integer_to_list(I).
 
 respond_body(#state{sock=Sock, resp_body={Fun, IterState}})
