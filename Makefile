@@ -7,5 +7,5 @@ SHELL_OPTS = -s psycho_reloader
 
 include erlang.mk
 
-check::
+test:
 	erl -pa ebin -eval 'psycho_tests:run()' -s init stop -noshell
