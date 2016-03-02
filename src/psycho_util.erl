@@ -215,6 +215,8 @@ apply_check({must_equal, {field, Field}}, Value, Data) ->
     Value == proplists:get_value(Field, Data);
 apply_check({must_equal, Target}, Value, _Data) ->
     Value == Target;
+apply_check(TargetStr, Value, _Data) when is_list(TargetStr) ->
+    Value == TargetStr;
 apply_check(binary, Value, _Data) ->
     {true, list_to_binary(Value)};
 apply_check(integer, Value, _Data) ->
@@ -225,6 +227,8 @@ apply_check(number, Value, _Data) ->
     try_number(Value);
 apply_check({min_length, MinLength}, Value, _Data) ->
     Value /= undefined andalso iolist_size(Value) >= MinLength;
+apply_check({any, Checks}, Value, Data) ->
+    try_any(Checks, Value, Data);
 apply_check(Check, _Value, _Data) ->
     error({invalid_check, Check}).
 
@@ -265,6 +269,15 @@ try_number(Value) ->
             end
     end.
 
+try_any([Check|Rest], ValueIn, Data) ->
+    case apply_check(Check, ValueIn, Data) of
+        true -> true;
+        {true, ValueOut} -> {true, ValueOut};
+        false -> try_any(Rest, ValueIn, Data)
+    end;
+try_any([], _Value, _Data) ->
+    false.
+
 handle_apply_check(true, _Check, Value, Rest, Field, Data) ->
     apply_checks(Value, Rest, Field, Data);
 handle_apply_check({true, NewValue}, _Check, _Value, Rest, Field, Data) ->
@@ -287,6 +300,8 @@ format_validate_error({Field, {must_equal, {field, Target}}}) ->
     io_lib:format("~s must match ~s", [Field, Target]);
 format_validate_error({Field, {must_equal, Target}}) ->
     io_lib:format("~s must be ~s", [Field, Target]);
+format_validate_error({Field, Target}) when is_list(Target) ->
+    io_lib:format("~s must be ~s", [Field, Target]);                                            
 format_validate_error({Field, {min_length, MinLength}}) ->
     io_lib:format(
       "~s must be at least ~b characters long",
@@ -296,6 +311,9 @@ format_validate_error({Field, NumType})
        NumType == float;
        NumType == number ->
     io_lib:format("~s must be a valid ~s", [Field, NumType]);
+format_validate_error({Field, {any, Checks}}) ->
+    FormattedChecks = [format_validate_error({Field, C}) || C <- Checks],
+    string:join(FormattedChecks, " or ");
 format_validate_error(Other) ->
     io_lib:format("~p", [Other]).
 

@@ -145,6 +145,7 @@ test_validate() ->
     {error, {"foo", {must_equal, "FOO"}}} =
         V([], [{"foo", [{must_equal, "FOO"}]}]),
     {ok, _} = V([{"foo", "FOO"}], [{"foo", [{must_equal, "FOO"}]}]),
+    {ok, _} = V([{"foo", "FOO"}], [{"foo", ["FOO"]}]),
 
     %% must_equal, reference to another field value
 
@@ -164,6 +165,14 @@ test_validate() ->
     {error, {"foo", {min_length, 4}}} =
         V([{"foo", "FOO"}], [{"foo", [{min_length, 4}]}]),
     {ok, _} = V([{"foo", "FOO"}], [{"foo", [{min_length, 3}]}]),
+
+    %% Any
+    {error, {"foo", {any, ["456","789"]}}} =
+        V([{"foo", "123"}],
+          [{"foo", [{any, ["456", "789"]}]}]),
+    {ok, [{"foo", "456"}]} =
+        V([{"foo", "456"}],
+          [{"foo", [{any, ["456", "789"]}]}]),
 
     %% Conversions
 
