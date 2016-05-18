@@ -1,6 +1,8 @@
 -module(psycho_mime).
 
 -export([init/0,
+         init/1,
+         load_types/1,
          type_from_path/1,
          type_from_path/2,
          type_from_extension/1,
@@ -10,10 +12,13 @@
 -define(MIME_TYPES_FILE, "mime.types").
 
 init() ->
-    init_table(load_priv_types()).
+    init_table(load_types(priv_mime_types())).
 
-load_priv_types() ->
-    case file:consult(priv_mime_types()) of
+init(Types) ->
+    init_table(Types).
+
+load_types(Src) ->
+    case file:consult(Src) of
         {ok, [Types]} -> Types;
         _ -> []
     end.
