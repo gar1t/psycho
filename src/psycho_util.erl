@@ -392,8 +392,10 @@ dispatch_part_acc(parsed_cookie, {Env0, Acc}) ->
 dispatch_part_acc(Literal, {Env, Acc}) ->
     {Env, [Literal|Acc]}.
 
-dispatch_app(Dispatch, On) ->
-    fun(Env) -> apply(Dispatch, dispatch_on(On, Env)) end.
+dispatch_app({M, F}, On) ->
+    fun(Env) -> apply(M, F, dispatch_on(On, Env)) end;
+dispatch_app(Fun, On) ->
+    fun(Env) -> apply(Fun, dispatch_on(On, Env)) end.
 
 %%%===================================================================
 %%% Chain apps
