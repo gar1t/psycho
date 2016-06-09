@@ -35,12 +35,12 @@ dispatch([Invalid|_], _Method, _Path, _Env, _Options) ->
 dispatch([], _Method, _Path, Env, Options) ->
     psycho:call_app(not_found_handler(Options), Env).
 
-path_matches(Path, Path)                  -> true;
 path_matches({starts_with, Prefix}, Path) -> starts_with(Prefix, Path);
 path_matches({matches, Regex}, Path)      -> regex_matches(Regex, Path);
 path_matches({exact, Path}, Path)         -> true;
 path_matches({any, Conditions}, Path)     -> any_matches(Conditions, Path);
 path_matches('_', _)                      -> true;
+path_matches(Path, Path)                  -> true;
 path_matches(_, _)                        -> false.
 
 starts_with([Char|RestPrefix], [Char|RestStr]) ->
