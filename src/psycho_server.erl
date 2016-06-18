@@ -19,19 +19,19 @@
 start(Binding, App) ->
     start(Binding, App, []).
 
-start(Binding, Apps, Options) ->
-    proc:start(?MODULE, [Binding, Apps, Options]).
+start(Binding, App, Options) ->
+    proc:start(?MODULE, [Binding, App, Options]).
 
-start_link(Binding, Apps) ->
-    start_link(Binding, Apps, []).
+start_link(Binding, App) ->
+    start_link(Binding, App, []).
 
-start_link(Binding, Apps, Options) ->
-    proc:start_link(?MODULE, [Binding, Apps, Options]).
+start_link(Binding, App, Options) ->
+    proc:start_link(?MODULE, [Binding, App, Options]).
 
-init([Binding, Apps, Options]) ->
+init([Binding, App, Options]) ->
     HandlerSup = start_handler_sup(),
     LSock = listen(Binding, Options),
-    {ok, init_state(HandlerSup, LSock, Apps), {first_msg, accept}}.
+    {ok, init_state(HandlerSup, LSock, App), {first_msg, accept}}.
 
 start_handler_sup() ->
     {ok, Sup} = psycho_handler_sup:start_link(),
