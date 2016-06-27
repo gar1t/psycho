@@ -2,8 +2,7 @@
 
 -behavior(proc).
 
--export([start/2, start/3,
-         start_link/2, start_link/3]).
+-export([start/2, start/3, start_link/2, start_link/3]).
 
 -export([init/1, handle_msg/3]).
 
@@ -42,7 +41,7 @@ init([Binding, App, Options]) ->
     {ok, State, {first_msg, accept}}.
 
 maybe_cb_init(Options) ->
-    case proplists:get_value(callback, Options) of
+    case proplists:get_value(proc_callback, Options) of
         undefined -> undefined;
         {Mod, InitArg} ->
             Mod:init(InitArg),
