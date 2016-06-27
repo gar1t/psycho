@@ -165,12 +165,12 @@ append_cookie_options([Other|_], _Val) ->
 
 decrypt(Data, Key) ->
     PaddedKey = pad(Key, 16),
-    unpad(crypto:aes_cbc_128_decrypt(PaddedKey, ?NULL_IV_128, Data)).
+    unpad(crypto:block_decrypt(aes_cbc128, PaddedKey, ?NULL_IV_128, Data)).
 
 encrypt(Data, Key) ->
     PaddedData = pad(Data, 16),
     PaddedKey = pad(Key, 16),
-    crypto:aes_cbc_128_encrypt(PaddedKey, ?NULL_IV_128, PaddedData).
+    crypto:block_encrypt(aes_cbc128, PaddedKey, ?NULL_IV_128, PaddedData).
 
 pad(Bin, BlockSize) ->
     PadCount = BlockSize - (size(Bin) rem BlockSize),
