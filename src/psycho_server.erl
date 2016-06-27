@@ -108,7 +108,7 @@ accept(#state{lsock=LSock, accept_timeout=Timeout}) ->
 
 handle_accept({ok, Sock}, State) ->
     dispatch_request(Sock, State);
-handle_accept({error, timeout}, State) ->
+handle_accept({error, timeout}, _State) ->
     ok.
 
 dispatch_request(Sock, #state{handler_sup=Sup, app=App}) ->
