@@ -13,7 +13,8 @@ run() ->
         test_multipart_splits(),
         test_multipart_multiple(),
         test_multipart_filtering(),
-        test_dispatch_on()
+        test_dispatch_on(),
+        test_encode_decode_url()
     catch
         _:Err ->
             io:format("ERROR~n~p~n~p~n", [Err, erlang:get_stacktrace()])
@@ -525,5 +526,29 @@ test_dispatch_on() ->
     ["GET",
      "/foo/bar",
      [{"a","1"}, {"b","2"}]]   = D([method, path, parsed_query_string]),
+
+    io:format("OK~n").
+
+test_encode_decode_url() ->
+    io:format("encode_decude_url: "),
+
+    Encode = fun(Base, Params) ->
+                     binary_to_list(
+                       iolist_to_binary(
+                         psycho_util:encode_url(Base, Params)))
+             end,
+    Decode = fun psycho_util:decode_url_part/1,
+
+    "/foo?" = Encode("/foo", []),
+    "/foo?a=A" = Encode("/foo", [{"a", "A"}]),
+    "/foo?a%26b=c%7Cd" = Encode("/foo", [{"a&b", "c|d"}]),
+    "/foo?a%26b=c%7Cd&e%3Df&g%2Fh"
+        = Encode("/foo", [{"a&b", "c|d"}, "e=f", "g/h"]),
+
+    "a" = Decode("a"),
+    "a&b" = Decode("a%26b"),
+    "c|d" = Decode("c%7Cd"),
+    "e=f" = Decode("e%3Df"),
+    "g/h" = Decode("g%2Fh"),
 
     io:format("OK~n").

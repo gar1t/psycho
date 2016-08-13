@@ -15,7 +15,7 @@
          app_dir/1, priv_dir/1, priv_dir/2,
          dispatch_on/2, dispatch_app/2,
          chain_apps/1,
-         encode_url/2]).
+         encode_url/2, decode_url_part/1]).
 
 -import(psycho, [env_val/2, env_header/3]).
 
@@ -412,20 +412,28 @@ chain_apps(AppCreators) ->
 encode_url(Base, Params) ->
     [Base, $?|encode_url_params(Params, [])].
 
-encode_url_params([{Name, Val}|Rest], Acc) ->
-    encode_url_params(Rest, apply_encoded_param(Name, Val, Acc));
+encode_url_params([Param|Rest], Acc) ->
+    encode_url_params(Rest, apply_encoded_param(Param, Acc));
 encode_url_params([], Acc) ->
     lists:reverse(Acc).
 
-apply_encoded_param(Name, Val, []) ->
-    [encode_param(Name, Val)];
-apply_encoded_param(Name, Val, Acc) ->
-    [encode_param(Name, Val), $&|Acc].
+apply_encoded_param(Param, []) ->
+    [encode_param(Param)];
+apply_encoded_param(Param, Acc) ->
+    [encode_param(Param), $&|Acc].
 
-encode_param(Name, Val) ->
-    [uri_part_encode(Name), $=, uri_part_encode(Val)].
+encode_param({Name, Val}) ->
+    [uri_part_encode(Name), $=, uri_part_encode(Val)];
+encode_param(Val) ->
+    uri_part_encode(Val).
 
 uri_part_encode(L) when is_list(L) ->
     http_uri:encode(L);
 uri_part_encode(B) when is_binary(B) ->
     http_uri:encode(binary_to_list(B)).
+
+%%%===================================================================
+%%% Decode
+%%%===================================================================
+
+decode_url_part(Part) -> http_uri:decode(Part).
