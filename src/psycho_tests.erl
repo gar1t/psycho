@@ -14,7 +14,8 @@ run() ->
         test_multipart_multiple(),
         test_multipart_filtering(),
         test_dispatch_on(),
-        test_encode_decode_url()
+        test_encode_decode_url(),
+        test_chain_apps()
     catch
         _:Err ->
             io:format("ERROR~n~p~n~p~n", [Err, erlang:get_stacktrace()])
@@ -552,3 +553,26 @@ test_encode_decode_url() ->
     "g/h" = Decode("g%2Fh"),
 
     io:format("OK~n").
+
+test_chain_apps() ->
+    io:format("chain_apps: "),
+
+    App =
+        psycho_util:chain_apps(
+          [fun base_app/0,
+           middleware_app_creator(m1),
+           middleware_app_creator(m2),
+           middleware_app_creator(m3)]),
+
+    [base, m1, m2, m3] = App([]),
+
+    io:format("OK~n").
+
+base_app() ->
+    fun(Env) -> [base|Env] end.
+
+middleware_app(Tag, Upstream) ->
+    fun(Env) -> Upstream([Tag|Env]) end.
+
+middleware_app_creator(Tag) ->
+    fun(Upstream) -> middleware_app(Tag, Upstream) end.
