@@ -14,7 +14,7 @@
          content_disposition/2,
          app_dir/1, priv_dir/1, priv_dir/2,
          dispatch_on/2, dispatch_app/2,
-         chain_apps/1,
+         chain_apps/2,
          encode_url/2, decode_url_part/1]).
 
 -import(psycho, [env_val/2, env_header/3]).
@@ -401,9 +401,10 @@ dispatch_app(Fun, On) ->
 %%% Chain apps
 %%%===================================================================
 
-chain_apps(AppCreators) ->
-    [Base|Rest] = AppCreators,
-    lists:foldl(fun(NextApp, Prev) -> NextApp(Prev) end, Base(), Rest).
+chain_apps(Base, Middleware) ->
+    lists:foldl(fun create_middleware_app/2, Base, Middleware).
+
+create_middleware_app(Create, Upstream) -> Create(Upstream).
 
 %%%===================================================================
 %%% Encode URL

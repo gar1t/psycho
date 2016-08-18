@@ -557,12 +557,9 @@ test_encode_decode_url() ->
 test_chain_apps() ->
     io:format("chain_apps: "),
 
-    App =
-        psycho_util:chain_apps(
-          [fun base_app/0,
-           middleware_app_creator(m1),
-           middleware_app_creator(m2),
-           middleware_app_creator(m3)]),
+    App = psycho_util:chain_apps(
+            base_app(),
+            [middleware(m1), middleware(m2), middleware(m3)]),
 
     [base, m1, m2, m3] = App([]),
 
@@ -574,5 +571,5 @@ base_app() ->
 middleware_app(Tag, Upstream) ->
     fun(Env) -> Upstream([Tag|Env]) end.
 
-middleware_app_creator(Tag) ->
+middleware(Tag) ->
     fun(Upstream) -> middleware_app(Tag, Upstream) end.
