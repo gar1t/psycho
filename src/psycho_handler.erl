@@ -214,9 +214,8 @@ handle_app_recv_form_data(?URLENCODED, App, Options, State) ->
     handle_app_recv_urlencoded_data(App, Options, State);
 handle_app_recv_form_data(?MULTIPART ++ TypeParams, App, Options, State) ->
     handle_app_recv_multipart(TypeParams, App, Options, State);
-handle_app_recv_form_data(ContentType, _App, _Options, State) ->
-    respond(internal_error("Unsupported content type"), State),
-    error({form_data_content_type, ContentType}).
+handle_app_recv_form_data(ContentType, App, Options, State) ->
+    handle_app_recv_unknown(ContentType, App, Options, State).
 
 %%%===================================================================
 %%% urlencoded form data
@@ -306,6 +305,23 @@ handle_app_recv_multipart_data(Data, Recv, MP, App, State) ->
 
 handle_updated_multipart(MP, Recv, App, State) ->
     handle_app_recv_multipart(Recv(State), Recv, MP, App, State).
+
+%%%===================================================================
+%%% unknown form data
+%%%===================================================================
+
+handle_app_recv_unknown(ContentType, App, Options, State) ->
+    Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    Received = recv_remaining(Timeout, State),
+    handle_app_recv_unknown_(Received, ContentType, App, State).
+
+handle_app_recv_unknown_({ok, Body}, ContentType, App, #state{env=Env}=State) ->
+    Data = {error, {content_type, ContentType, Body}},
+    AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
+    error_on_recv_after_eof(AppResult, App),
+    handle_app_result(AppResult, increment_recv_len(Body, State));
+handle_app_recv_unknown_({error, Error}, _Type, _App, _State) ->
+    {stop, {recv_error, Error}}.
 
 %%%===================================================================
 %%% recv related general/shared functions
