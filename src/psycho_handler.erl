@@ -341,6 +341,7 @@ recv(_Length, _Timeout, _State) ->
 recv_remaining(Timeout, State) ->
     recv(remaining_len(State), Timeout, State).
 
+remaining_len(#state{req_content_len=undefined}) -> 0;
 remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
     Total - Received.
 
