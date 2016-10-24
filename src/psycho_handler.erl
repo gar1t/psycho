@@ -192,10 +192,10 @@ handle_app_recv_body(App, Options, State) ->
     Received = safe_recv(Length, Timeout, State),
     handle_recv_body(Received, App, State).
 
-handle_recv_body({ok, Data}, App, #state{env=Env}=State) ->
-    AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
-    error_on_recv_after_eof(is_eof(Data), AppResult, App),
-    handle_app_result(AppResult, increment_recv_len(Data, State));
+handle_recv_body({ok, Body}, App, #state{env=Env}=State) ->
+    AppResult = (catch psycho:call_app_with_data(App, Env, Body)),
+    error_on_recv_after_eof(is_eof(Body), AppResult, App),
+    handle_app_result(AppResult, increment_recv_len(Body, State));
 handle_recv_body({error, Error}, _App, _State) ->
     {stop, {recv_error, Error}}.
 
@@ -225,14 +225,14 @@ handle_app_recv_form_data(ContentType, _App, _Options, State) ->
 handle_app_recv_urlencoded_data(App, Options, State) ->
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
     Received = recv_remaining(Timeout, State),
-    handle_recv_urlencoded_form_data(Received, App, State).
+    handle_app_recv_urlencoded_data_(Received, App, State).
 
-handle_recv_urlencoded_form_data({ok, Data}, App, #state{env=Env}=State) ->
-    FormData = decode_urlencoded_form_data(Data),
-    AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
+handle_app_recv_urlencoded_data_({ok, Encoded}, App, #state{env=Env}=State) ->
+    Data = decode_urlencoded_form_data(Encoded),
+    AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
     error_on_recv_after_eof(AppResult, App),
-    handle_app_result(AppResult, increment_recv_len(Data, State));
-handle_recv_urlencoded_form_data({error, Error}, _App, _State) ->
+    handle_app_result(AppResult, increment_recv_len(Encoded, State));
+handle_app_recv_urlencoded_data_({error, Error}, _App, _State) ->
     {stop, {recv_error, Error}}.
 
 decode_urlencoded_form_data(Data) ->
@@ -265,7 +265,7 @@ start_recv_multipart(TypeParams, App, Options, State) ->
     PartHandler = proplists:get_value(part_handler, Options),
     MP = new_multipart(TypeParams, PartHandler, State),
     Recv = safe_recv_fun(Length, Timeout),
-    handle_recv_multipart(Recv(State), Recv, MP, App, State).
+    handle_app_recv_multipart(Recv(State), Recv, MP, App, State).
 
 new_multipart(TypeParams, PartHandler, #state{env=Env}=State) ->
     Boundary = boundary_param(TypeParams, State),
@@ -285,27 +285,27 @@ handle_boundary_re(nomatch, State) ->
 safe_recv_fun(Length, Timeout) ->
     fun(State) -> safe_recv(Length, Timeout, State) end.
 
-handle_recv_multipart({ok, <<>>}, _Recv, MP, App, State) ->
-    handle_recv_multipart_finished(MP, App, State);
-handle_recv_multipart({ok, Data}, Recv, MP, App, State) ->
-    handle_recv_multipart_data(Data, Recv, MP, App, State);
-handle_recv_multipart({error, Error}, _Recv, _MP, _App, _State) ->
+handle_app_recv_multipart({ok, <<>>}, _Recv, MP, App, State) ->
+    handle_app_recv_multipart_finished(MP, App, State);
+handle_app_recv_multipart({ok, Data}, Recv, MP, App, State) ->
+    handle_app_recv_multipart_data(Data, Recv, MP, App, State);
+handle_app_recv_multipart({error, Error}, _Recv, _MP, _App, _State) ->
     {stop, {recv_error, Error}}.
 
-handle_recv_multipart_finished(MP, App, State) ->
+handle_app_recv_multipart_finished(MP, App, State) ->
     FormData = psycho_multipart:form_data(MP),
     Env = psycho_multipart:user_data(MP),
     AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
     error_on_recv_after_eof(AppResult, App),
     handle_app_result(AppResult, State).
 
-handle_recv_multipart_data(Data, Recv, MP, App, State) ->
+handle_app_recv_multipart_data(Data, Recv, MP, App, State) ->
     handle_updated_multipart(
       psycho_multipart:data(Data, MP),
       Recv, App, increment_recv_len(Data, State)).
 
 handle_updated_multipart(MP, Recv, App, State) ->
-    handle_recv_multipart(Recv(State), Recv, MP, App, State).
+    handle_app_recv_multipart(Recv(State), Recv, MP, App, State).
 
 %%%===================================================================
 %%% recv related general/shared functions
