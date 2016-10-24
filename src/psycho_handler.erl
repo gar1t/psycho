@@ -228,7 +228,7 @@ handle_app_recv_urlencoded_data(App, Options, State) ->
 
 handle_app_recv_urlencoded_data_({ok, Encoded}, App, #state{env=Env}=State) ->
     Data = decode_urlencoded_form_data(Encoded),
-    AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
+    AppResult = (catch psycho:call_app_with_data(App, Env, {ok, Data})),
     error_on_recv_after_eof(AppResult, App),
     handle_app_result(AppResult, increment_recv_len(Encoded, State));
 handle_app_recv_urlencoded_data_({error, Error}, _App, _State) ->
@@ -292,9 +292,9 @@ handle_app_recv_multipart({error, Error}, _Recv, _MP, _App, _State) ->
     {stop, {recv_error, Error}}.
 
 handle_app_recv_multipart_finished(MP, App, State) ->
-    FormData = psycho_multipart:form_data(MP),
+    Data = psycho_multipart:form_data(MP),
     Env = psycho_multipart:user_data(MP),
-    AppResult = (catch psycho:call_app_with_data(App, Env, FormData)),
+    AppResult = (catch psycho:call_app_with_data(App, Env, {ok, Data})),
     error_on_recv_after_eof(AppResult, App),
     handle_app_result(AppResult, State).
 
@@ -316,8 +316,8 @@ handle_app_recv_unknown(ContentType, App, Options, State) ->
     handle_app_recv_unknown_(Received, ContentType, App, State).
 
 handle_app_recv_unknown_({ok, Body}, ContentType, App, #state{env=Env}=State) ->
-    Data = {error, {content_type, ContentType, Body}},
-    AppResult = (catch psycho:call_app_with_data(App, Env, Data)),
+    Err = {content_type, ContentType, Body},
+    AppResult = (catch psycho:call_app_with_data(App, Env, {error, Err})),
     error_on_recv_after_eof(AppResult, App),
     handle_app_result(AppResult, increment_recv_len(Body, State));
 handle_app_recv_unknown_({error, Error}, _Type, _App, _State) ->
