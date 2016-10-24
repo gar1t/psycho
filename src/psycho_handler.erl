@@ -280,7 +280,7 @@ boundary_param(Str, State) ->
 
 handle_boundary_re({match, [Boundary]}, _State) -> Boundary;
 handle_boundary_re(nomatch, State) ->
-    respond(internal_error("Invalid multipart content type"), State).
+    respond(internal_error("Invalid multipart content type\n"), State).
 
 safe_recv_fun(Length, Timeout) ->
     fun(State) -> safe_recv(Length, Timeout, State) end.
@@ -329,7 +329,7 @@ remaining_len(#state{req_content_len=Total, recv_len=Received}) ->
     Total - Received.
 
 internal_error() ->
-    internal_error("Server error").
+    internal_error("Server error\n").
 
 internal_error(Msg) ->
     {?status_internal_server_error, [{"Content-Type", "text/plain"}], Msg}.
