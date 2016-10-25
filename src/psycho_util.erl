@@ -394,7 +394,9 @@ dispatch_part_acc(Literal, {Env, Acc}) ->
 
 dispatch_app({M, F}, On) ->
     fun(Env) -> apply(M, F, dispatch_on(On, Env)) end;
-dispatch_app(Fun, On) ->
+dispatch_app(M, On) when is_atom(M) ->
+    fun(Env) -> apply(M, app, dispatch_on(On, Env)) end;
+dispatch_app(Fun, On) when is_function(Fun) ->
     fun(Env) -> apply(Fun, dispatch_on(On, Env)) end.
 
 %%%===================================================================
