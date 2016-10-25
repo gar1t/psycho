@@ -189,6 +189,7 @@ setenv(Env, S) -> S#state{env=Env}.
 handle_app_recv_body(App, Options, State) ->
     Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    maybe_send_continue(State),
     Received = safe_recv(Length, Timeout, State),
     handle_recv_body(Received, App, State).
 
@@ -223,6 +224,7 @@ handle_app_recv_form_data(ContentType, App, Options, State) ->
 
 handle_app_recv_urlencoded_data(App, Options, State) ->
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    maybe_send_continue(State),
     Received = recv_remaining(Timeout, State),
     handle_app_recv_urlencoded_data_(Received, App, State).
 
@@ -244,19 +246,6 @@ decode_urlencoded_form_data(Data) ->
 handle_app_recv_multipart(TypeParams, App, Options, State) ->
     maybe_send_continue(State),
     start_recv_multipart(TypeParams, App, Options, State).
-
-maybe_send_continue(State) ->
-    case expect_continue(State) of
-        true -> send_continue(State);
-        false -> ok
-    end.
-
-expect_continue(State) ->
-    req_header("Expect", State) == "100-continue".
-
-send_continue(#state{sock=Sock}) ->
-    Line = ["HTTP/1.1 100 Continue", ?CRLF, ?CRLF],
-    ok = gen_tcp:send(Sock, Line).
 
 start_recv_multipart(TypeParams, App, Options, State) ->
     Length = proplists:get_value(recv_length, Options, ?DEFAULT_RECV_LEN),
@@ -312,6 +301,7 @@ handle_updated_multipart(MP, Recv, App, State) ->
 
 handle_app_recv_unknown(ContentType, App, Options, State) ->
     Timeout = proplists:get_value(recv_timeout, Options, ?IDLE_TIMEOUT),
+    maybe_send_continue(State),
     Received = recv_remaining(Timeout, State),
     handle_app_recv_unknown_(Received, ContentType, App, State).
 
@@ -326,6 +316,20 @@ handle_app_recv_unknown_({error, Error}, _Type, _App, _State) ->
 %%%===================================================================
 %%% recv related general/shared functions
 %%%===================================================================
+
+maybe_send_continue(#state{client_ver={1, 0}}) -> ok;
+maybe_send_continue(State) ->
+    case expect_continue(State) of
+        true -> send_continue(State);
+        false -> ok
+    end.
+
+expect_continue(State) ->
+    req_header("Expect", State) == "100-continue".
+
+send_continue(#state{sock=Sock}) ->
+    Line = ["HTTP/1.1 100 Continue", ?CRLF, ?CRLF],
+    ok = gen_tcp:send(Sock, Line).
 
 safe_recv(Length, Timeout, State) ->
     recv(safe_recv_len(Length, State), Timeout, State).
