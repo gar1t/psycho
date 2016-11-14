@@ -334,6 +334,8 @@ send_continue(#state{sock=Sock}) ->
 safe_recv(Length, Timeout, State) ->
     recv(safe_recv_len(Length, State), Timeout, State).
 
+safe_recv_len(_Requested, #state{req_content_len=undefined}) ->
+    0;
 safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
     min(Requested, Total - Received).
 
