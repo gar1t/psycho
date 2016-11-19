@@ -558,7 +558,7 @@ This might be a standard interface for handling file uploads.
 	    case is_file(Headers) of
 		    {true, Filename} ->
 			    F = open_file(Filename),
-			    {continue, psycho:set_env({open_file, Name}, F, Env)}; 
+			    {continue, psycho:set_env({open_file, Name}, F, Env)};
 			false ->
 			    {continue, Env}
 		end;
@@ -626,6 +626,23 @@ flow control in this case) to short-circuit the response and exit the
 process. This is at least explicit (rather than a crash from a
 badmatch), whether or not we decide this is a {stop, normal} or {stop,
 client_connection_closed} result.
+
+### recv_body and recv_length option - BIG surprise
+
+This is a terrible problem. There's a safeguard in recv_body that
+prevents OOM attack vector: the default behavior is to receive a max
+of 32768 bytes unless recv_length is specified as an
+option. Subsequent uses of recv_body will read more data until an
+empty result is returned. This is entirely by design.
+
+The problem is it's entirely non obvious and will absolutely drive
+people nuts.
+
+Some options:
+
+- Introduce a recv_body_part that requires a length
+- Modify recv_body to use content-length if available or read until
+  empty
 
 ## Misc
 
