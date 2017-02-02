@@ -2,6 +2,7 @@
 
 -export([call_app/2, call_app_with_data/3,
          priv_dir/0,
+         env/2, env/3,
          env_val/2, env_val/3, set_env/3,
          env_header/2, env_header/3,
          parsed_request_path/1]).
@@ -25,14 +26,18 @@ priv_dir(BeamFile) when is_list(BeamFile) ->
 priv_dir(Other) ->
     error({psycho_priv_dir, Other}).
 
-env_val(Name, Env) ->
-    env_val(Name, Env, undefined).
+env(Name, Env) ->
+    env(Name, Env, undefined).
 
-env_val(Name, Env, Default) ->
+env(Name, Env, Default) ->
     case lists:keyfind(Name, 1, Env) of
         {_, Value} -> Value;
         _ -> Default
     end.
+
+env_val(Name, Env) -> env(Name, Env).
+
+env_val(Name, Env, Default) -> env(Name, Env, Default).
 
 set_env(Name, Value, Env) ->
     [{Name, Value}|lists:keydelete(Name, 1, Env)].
