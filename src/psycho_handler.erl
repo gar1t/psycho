@@ -329,7 +329,7 @@ expect_continue(State) ->
 
 send_continue(#state{sock=Sock}) ->
     Line = ["HTTP/1.1 100 Continue", ?CRLF, ?CRLF],
-    ok = gen_tcp:send(Sock, Line).
+    ok = psycho_socket:send(Sock, Line).
 
 safe_recv(Length, Timeout, State) ->
     recv(safe_recv_len(Length, State), Timeout, State).
@@ -340,7 +340,7 @@ safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
     min(Requested, Total - Received).
 
 recv(Length, Timeout, #state{sock=Sock}) when Length > 0 ->
-    gen_tcp:recv(Sock, Length, Timeout);
+    psycho_socket:recv(Sock, Length, Timeout);
 recv(_Length, _Timeout, _State) ->
     {ok, <<>>}.
 
@@ -469,16 +469,16 @@ respond(State) ->
 
 respond_status(#state{sock=Sock, resp_status={Code, Reason}}) ->
     Line = ["HTTP/1.1 ", integer_to_list(Code), " ", Reason, ?CRLF],
-    ok = gen_tcp:send(Sock, Line).
+    ok = psycho_socket:send(Sock, Line).
 
 respond_headers(#state{resp_headers=Headers, sock=Sock}) ->
     respond_headers(Headers, Sock).
 
 respond_headers([{Name, Value}|Rest], Sock) ->
-    ok = gen_tcp:send(Sock, [Name, ": ", header_value(Value), ?CRLF]),
+    ok = psycho_socket:send(Sock, [Name, ": ", header_value(Value), ?CRLF]),
     respond_headers(Rest, Sock);
 respond_headers([], Sock) ->
-    ok = gen_tcp:send(Sock, ?CRLF).
+    ok = psycho_socket:send(Sock, ?CRLF).
 
 header_value(L) when is_list(L) -> L;
 header_value(B) when is_binary(B) -> B;
@@ -491,7 +491,7 @@ respond_body(#state{sock=Sock, resp_body=Body}=State) ->
     send_data(Sock, maybe_encode_chunk(Body, State)).
 
 send_data(Sock, Data) ->
-    ok = gen_tcp:send(Sock, Data).
+    ok = psycho_socket:send(Sock, Data).
 
 maybe_encode_chunk(Data, #state{resp_chunked=true}) ->
     [encode_chunk(Data), last_chunk()];
@@ -537,7 +537,7 @@ handle_unread_data(false, State) ->
     keep_alive(State).
 
 close(#state{sock=Sock}) ->
-    ok = gen_tcp:close(Sock),
+    ok = psycho_socket:close(Sock),
     {stop, normal}.
 
 keep_alive(S) ->
