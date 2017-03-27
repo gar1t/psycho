@@ -19,8 +19,8 @@ start_handler(Sup, Sock, Apps) ->
     Result.
 
 maybe_handoff_socket({ok, Pid}, Sock) ->
-    ok = gen_tcp:controlling_process(Sock, Pid),
-    ok = inet:setopts(Sock, [{active, once}, {packet, http}]);
+    ok = psycho_socket:controlling_process(Sock, Pid),
+    ok = psycho_socket:setopts(Sock, [{active, once}, {packet, http}]);
 maybe_handoff_socket(_Other, _Sock) ->
     ok.
 

@@ -53,30 +53,10 @@ start_handler_sup() ->
     Sup.
 
 listen(Binding, Options) ->
-    Port = binding_port(Binding),
-    ListenOpts = listen_options(Options),
-    handle_listen(gen_tcp:listen(Port, ListenOpts)).
-
-binding_port(Port) when is_integer(Port) -> Port;
-%% TODO - use Binding to specify bound IP addr
-binding_port({_Addr, Port}) when is_integer(Port) -> Port;
-binding_port(Other) -> error({invalid_binding, Other}).
-
-listen_options(Opts) ->
-    [binary,
-     {active,    false},
-     {reuseaddr, true},
-     {backlog,   backlog_opt(Opts)},
-     {recbuf,    recbuf_opt(Opts)}].
+    handle_listen(psycho_socket:listen(Binding, Options)).
 
 handle_listen({ok, LSock}) -> LSock;
 handle_listen({error, Err}) -> error({listen, Err}).
-
-backlog_opt(Opts) ->
-    proplists:get_value(backlog, Opts, ?DEFAULT_BACKLOG).
-
-recbuf_opt(Opts) ->
-    proplists:get_value(recbuf, Opts, ?DEFAULT_RECBUF).
 
 accept_timeout_opt(undefined, _Opts) ->
     infinity;
@@ -104,7 +84,7 @@ handle_msg_cb({stop, Reason}, State) ->
     {stop, Reason, State}.
 
 accept(#state{lsock=LSock, accept_timeout=Timeout}) ->
-    gen_tcp:accept(LSock, Timeout).
+    psycho_socket:accept(LSock, Timeout).
 
 handle_accept({ok, Sock}, State) ->
     dispatch_request(Sock, State);

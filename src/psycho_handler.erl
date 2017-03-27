@@ -8,7 +8,7 @@
 
 -include("http_status.hrl").
 
--record(state, {sock, app,
+-record(state, {sock, tag_http, tag_close, tag_error, app,
                 client_ver, env, req_headers, req_content_len, recv_len,
                 resp_status, resp_headers, resp_header_names, resp_body,
                 resp_chunked, close}).
@@ -36,7 +36,11 @@ init([Sock, App]) ->
 
 init_state(Sock, App) ->
     init_socket(Sock),
+    {Http, Close, Error} = psycho_socket:tags(Sock),
     #state{sock=Sock,
+           tag_http=Http,
+           tag_close=Close,
+           tag_error=Error,
            app=App,
            client_ver=undefined,
            env=[],
@@ -48,28 +52,30 @@ init_state(Sock, App) ->
            close=undefined}.
 
 init_socket(Sock) ->
-    ok = inet:setopts(Sock, [{nodelay, true}]).
+    ok = psycho_socket:setopts(Sock, [{nodelay, true}]).
 
 %%%===================================================================
 %%% Process messages / HTTP request state handling
 %%%===================================================================
 
-handle_msg({http, _, {http_request, Method, Path, Ver}}, _From, State) ->
+handle_msg({Http, _, {http_request, Method, Path, Ver}}, _From,
+           #state{tag_http=Http} = State) ->
     set_socket_active_once(State),
     {noreply, set_request(Method, Path, Ver, State)};
-handle_msg({http, _, {http_header, _, Name, _, Value}}, _From, State) ->
+handle_msg({Http, _, {http_header, _, Name, _, Value}}, _From,
+           #state{tag_http=Http} = State) ->
     set_socket_active_once(State),
     {noreply, add_req_header(Name, Value, State)};
-handle_msg({http, _, http_eoh}, _From, State) ->
+handle_msg({Http, _, http_eoh}, _From, #state{tag_http=Http} = State) ->
     set_socket_raw_passive(State),
     dispatch_to_app(finalize_request(State));
-handle_msg({tcp_closed, _}, _From, _State) ->
+handle_msg({Close, _}, _From, #state{tag_close=Close}) ->
     {stop, normal};
-handle_msg({tcp_error, _, Reason}, _From, _State) ->
+handle_msg({Error, _, Reason}, _From, #state{tag_error=Error}) ->
     {stop, {tcp_error, Reason}}.
 
 set_socket_active_once(#state{sock=S}) ->
-    ok = inet:setopts(S, [{active, once}]).
+    ok = psycho_socket:setopts(S, [{active, once}]).
 
 %%%===================================================================
 %%% Request init / pre app dispatch
@@ -114,7 +120,7 @@ add_header(H, #state{req_headers=Hs}=S) ->
 content_length(L) -> list_to_integer(L).
 
 set_socket_raw_passive(#state{sock=Sock}) ->
-    ok = inet:setopts(Sock, [{packet, raw}, {active, false}]).
+    ok = psycho_socket:setopts(Sock, [{packet, raw}, {active, false}]).
 
 finalize_request(State) ->
     apply_state_transforms(
@@ -329,7 +335,7 @@ expect_continue(State) ->
 
 send_continue(#state{sock=Sock}) ->
     Line = ["HTTP/1.1 100 Continue", ?CRLF, ?CRLF],
-    ok = gen_tcp:send(Sock, Line).
+    ok = psycho_socket:send(Sock, Line).
 
 safe_recv(Length, Timeout, State) ->
     recv(safe_recv_len(Length, State), Timeout, State).
@@ -340,7 +346,7 @@ safe_recv_len(Requested, #state{req_content_len=Total, recv_len=Received}) ->
     min(Requested, Total - Received).
 
 recv(Length, Timeout, #state{sock=Sock}) when Length > 0 ->
-    gen_tcp:recv(Sock, Length, Timeout);
+    psycho_socket:recv(Sock, Length, Timeout);
 recv(_Length, _Timeout, _State) ->
     {ok, <<>>}.
 
@@ -469,16 +475,16 @@ respond(State) ->
 
 respond_status(#state{sock=Sock, resp_status={Code, Reason}}) ->
     Line = ["HTTP/1.1 ", integer_to_list(Code), " ", Reason, ?CRLF],
-    ok = gen_tcp:send(Sock, Line).
+    ok = psycho_socket:send(Sock, Line).
 
 respond_headers(#state{resp_headers=Headers, sock=Sock}) ->
     respond_headers(Headers, Sock).
 
 respond_headers([{Name, Value}|Rest], Sock) ->
-    ok = gen_tcp:send(Sock, [Name, ": ", header_value(Value), ?CRLF]),
+    ok = psycho_socket:send(Sock, [Name, ": ", header_value(Value), ?CRLF]),
     respond_headers(Rest, Sock);
 respond_headers([], Sock) ->
-    ok = gen_tcp:send(Sock, ?CRLF).
+    ok = psycho_socket:send(Sock, ?CRLF).
 
 header_value(L) when is_list(L) -> L;
 header_value(B) when is_binary(B) -> B;
@@ -491,7 +497,7 @@ respond_body(#state{sock=Sock, resp_body=Body}=State) ->
     send_data(Sock, maybe_encode_chunk(Body, State)).
 
 send_data(Sock, Data) ->
-    ok = gen_tcp:send(Sock, Data).
+    ok = psycho_socket:send(Sock, Data).
 
 maybe_encode_chunk(Data, #state{resp_chunked=true}) ->
     [encode_chunk(Data), last_chunk()];
@@ -537,12 +543,12 @@ handle_unread_data(false, State) ->
     keep_alive(State).
 
 close(#state{sock=Sock}) ->
-    ok = gen_tcp:close(Sock),
+    ok = psycho_socket:close(Sock),
     {stop, normal}.
 
 keep_alive(S) ->
     {noreply, reset_state(S)}.
 
 reset_state(#state{sock=Sock, app=App}) ->
-    ok = inet:setopts(Sock, [{active, once}, {packet, http}]),
+    ok = psycho_socket:setopts(Sock, [{active, once}, {packet, http}]),
     init_state(Sock, App).
