@@ -7,16 +7,27 @@
          env_header/2, env_header/3,
          parsed_request_path/1]).
 
-call_app(M, Env) when is_atom(M) -> M:app(Env);
-call_app({M, F}, Env) -> M:F(Env);
-call_app({M, F, A}, Env) -> erlang:apply(M, F, A ++ [Env]);
-call_app(Fun, Env) -> Fun(Env).
+call_app(M, Env) when is_atom(M) ->
+    erlang:apply(M, app, [Env]);
+call_app({M, F}, Env) when is_atom(M) ->
+    erlang:apply(M, F, [Env]);
+call_app({M, F, A}, Env) when is_atom(M) ->
+    erlang:apply(M, F, A ++ [Env]);
+call_app(F, Env) when is_function(F) ->
+    erlang:apply(F, [Env]);
+call_app({F, A}, Env) when is_function(F) ->
+    erlang:apply(F, A ++ [Env]).
 
-call_app_with_data(M, Env, Data) when is_atom(M) -> M:app(Data, Env);
-call_app_with_data({M, F}, Env, Data) -> M:F(Data, Env);
-call_app_with_data({M, F, A}, Env, Data) ->
+call_app_with_data(M, Env, Data) when is_atom(M) ->
+    erlang:apply(M, app, [Data, Env]);
+call_app_with_data({M, F}, Env, Data) when is_atom(M) ->
+    erlang:apply(M, F, [Data, Env]);
+call_app_with_data({M, F, A}, Env, Data) when is_atom(M) ->
     erlang:apply(M, F, A ++ [Data, Env]);
-call_app_with_data(Fun, Env, Data) -> Fun(Data, Env).
+call_app_with_data(F, Env, Data) when is_function(F) ->
+    erlang:apply(F, [Data, Env]);
+call_app_with_data({F, A}, Env, Data) when is_function(F) ->
+    erlang:apply(F, A ++ [Data, Env]).
 
 priv_dir() ->
     priv_dir(code:which(?MODULE)).
