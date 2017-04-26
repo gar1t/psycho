@@ -21,6 +21,10 @@ run() ->
             io:format("ERROR~n~p~n~p~n", [Err, erlang:get_stacktrace()])
     end.
 
+%% ===================================================================
+%% parse request path
+%% ===================================================================
+
 test_parse_request_path() ->
     io:format("parse_request_path: "),
     P = fun(S) -> psycho_util:parse_request_path(S) end,
@@ -50,6 +54,10 @@ test_parse_request_path() ->
 
     io:format("OK~n").
 
+%% ===================================================================
+%% ensure parsed request path
+%% ===================================================================
+
 test_ensure_parsed_request_path() ->
     io:format("ensure_parsed_request_path: "),
     E = fun(Env) -> psycho_util:ensure_parsed_request_path(Env) end,
@@ -63,6 +71,10 @@ test_ensure_parsed_request_path() ->
     {Parsed, Env1} = E(Env1),
 
     io:format("OK~n").
+
+%% ===================================================================
+%% routes
+%% ===================================================================
 
 test_routes() ->
     io:format("routes: "),
@@ -105,6 +117,10 @@ test_routes() ->
 
     io:format("OK~n").
 
+%% ===================================================================
+%% crypto
+%% ===================================================================
+
 test_crypto() ->
     io:format("crypto: "),
 
@@ -127,6 +143,10 @@ test_crypto() ->
     error = D(E(Data2, Key2), Key1),
 
     io:format("OK~n").
+
+%% ===================================================================
+%% validate
+%% ===================================================================
 
 test_validate() ->
     io:format("validate: "),
@@ -196,6 +216,10 @@ test_validate() ->
 
     io:format("OK~n").
 
+%% ===================================================================
+%% multipart (simplest)
+%% ===================================================================
+
 test_multipart_simplest() ->
     io:format("multipart_simplest: "),
 
@@ -226,6 +250,10 @@ test_multipart_simplest() ->
        <<"Hi there.\n">>}}] = psycho_multipart:form_data(All),
 
     io:format("OK~n").
+
+%% ===================================================================
+%% multipart (splits)
+%% ===================================================================
 
 test_multipart_splits() ->
     io:format("multipart_splits: "),
@@ -316,6 +344,10 @@ test_multipart_splits() ->
 
     io:format("OK~n").
 
+%% ===================================================================
+%% multipart (multiple)
+%% ===================================================================
+
 test_multipart_multiple() ->
     io:format("multipart_multiple: "),
 
@@ -359,6 +391,10 @@ test_multipart_multiple() ->
        <<"This\nis\nfile 2.\n">>}}] = psycho_multipart:form_data(All),
 
     io:format("OK~n").
+
+%% ===================================================================
+%% multipart (filtering)
+%% ===================================================================
 
 test_multipart_filtering() ->
     io:format("multipart_filtering: "),
@@ -504,6 +540,10 @@ apply_data([Data|Rest], MP) ->
     apply_data(Rest, psycho_multipart:data(Data, MP));
 apply_data([], MP) -> MP.
 
+%% ===================================================================
+%% dispatch on
+%% ===================================================================
+
 test_dispatch_on() ->
     io:format("dispatch_on: "),
     Env =
@@ -530,6 +570,10 @@ test_dispatch_on() ->
 
     io:format("OK~n").
 
+%% ===================================================================
+%% encode/decode url
+%% ===================================================================
+
 test_encode_decode_url() ->
     io:format("encode_decude_url: "),
 
@@ -553,6 +597,10 @@ test_encode_decode_url() ->
     "g/h" = Decode("g%2Fh"),
 
     io:format("OK~n").
+
+%% ===================================================================
+%% chain apps
+%% ===================================================================
 
 test_chain_apps() ->
     io:format("chain_apps: "),
