@@ -58,7 +58,7 @@ resolve_path(Path, Opts, Calls) when Calls =< 1 ->
     case file_info(Path) of
         {ok, #file_info{type=regular}=Info} ->
             {Path, Info};
-        {ok, #file_info{type=directory}=Info} ->
+        {ok, #file_info{type=directory}} ->
             resolve_dir(Path, Opts, Calls);
         _ ->
             not_found(Path, Opts)
