@@ -575,7 +575,7 @@ test_dispatch_on() ->
 %% ===================================================================
 
 test_encode_decode_url() ->
-    io:format("encode_decude_url: "),
+    io:format("encode_decode_url: "),
 
     Encode = fun(Base, Params) ->
                      binary_to_list(
