@@ -35,7 +35,7 @@ day_name(2) -> "Tue";
 day_name(3) -> "Wed";
 day_name(4) -> "Thu";
 day_name(5) -> "Fri";
-day_name(6) -> "Sat"; 
+day_name(6) -> "Sat";
 day_name(7) -> "Sun".
 
 month_name(1)  -> "Jan";
@@ -152,10 +152,36 @@ cookie_header(Name, Value, Options) ->
     {"Set-Cookie", append_cookie_options(Options, Base)}.
 
 append_cookie_options([], Val) -> Val;
+append_cookie_options([{domain, Domain}|Rest], Val) ->
+    append_cookie_options(Rest, [Val, "; Domain=", Domain]);
 append_cookie_options([{path, Path}|Rest], Val) ->
     append_cookie_options(Rest, [Val, "; Path=", Path]);
+append_cookie_options([{max_age, Secs}|Rest], Val) when is_integer(Secs) ->
+    {Expires, MaxAge} = cookie_max_age(Secs),
+    NewVal = [Val, "; Expires=", Expires, "; Max-Age=", MaxAge],
+    append_cookie_options(Rest, NewVal);
+append_cookie_options([{secure, true}|Rest], Val) ->
+    append_cookie_options(Rest, [Val, "; Secure"]);
+append_cookie_options([{secure, false}|Rest], Val) ->
+    append_cookie_options(Rest, Val);
+append_cookie_options([{http_only, true}|Rest], Val) ->
+    append_cookie_options(Rest, [Val, "; HttpOnly"]);
+append_cookie_options([{http_only, false}|Rest], Val) ->
+    append_cookie_options(Rest, Val);
 append_cookie_options([Other|_], _Val) ->
     error({invalid_cookie_option, Other}).
+
+
+cookie_max_age(0) ->
+    {"Thu, 01-Jan-1970 00:00:01 GMT", "0"};
+cookie_max_age(MaxAgeSecs) ->
+    UTC = calendar:universal_time(),
+    Secs = calendar:datetime_to_gregorian_seconds(UTC),
+    ExpireDate = calendar:gregorian_seconds_to_datetime(Secs + MaxAgeSecs),
+    MaxAge = io_lib:format("~d", MaxAgeSecs),
+    Expires = psycho_datetime:rfc1123(ExpireDate),
+    {Expires, MaxAge}.
+
 
 %%%===================================================================
 %%% Crypto
@@ -301,7 +327,7 @@ format_validate_error({Field, {must_equal, {field, Target}}}) ->
 format_validate_error({Field, {must_equal, Target}}) ->
     io_lib:format("~s must be ~s", [Field, Target]);
 format_validate_error({Field, Target}) when is_list(Target) ->
-    io_lib:format("~s must be ~s", [Field, Target]);                                            
+    io_lib:format("~s must be ~s", [Field, Target]);
 format_validate_error({Field, {min_length, MinLength}}) ->
     io_lib:format(
       "~s must be at least ~b characters long",
