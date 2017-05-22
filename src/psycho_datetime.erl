@@ -1,15 +1,20 @@
 -module(psycho_datetime).
 
 -export([rfc1123/0,
+         rfc1123/1,
          iso8601/1,
          iso8601/2]).
 
 rfc1123() ->
-    {{YYYY, MM, DD}, {Hour, Min, Sec}} = calendar:universal_time(),
+    Now = calendar:universal_time(),
+    rfc1123(Now).
+
+rfc1123({{YYYY, MM, DD}, {Hour, Min, Sec}}) ->
     DayNumber = calendar:day_of_the_week({YYYY, MM, DD}),
     io_lib:format(
       "~s, ~2.2.0w ~3.s ~4.4.0w ~2.2.0w:~2.2.0w:~2.2.0w GMT",
       [day(DayNumber), DD, month(MM), YYYY, Hour, Min, Sec]).
+
 
 day(1) -> "Mon";
 day(2) -> "Tue";
