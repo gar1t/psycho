@@ -6,8 +6,7 @@
          iso8601/2]).
 
 rfc1123() ->
-    Now = calendar:universal_time(),
-    rfc1123(Now).
+    rfc1123(calendar:universal_time()).
 
 rfc1123({{YYYY, MM, DD}, {Hour, Min, Sec}}) ->
     DayNumber = calendar:day_of_the_week({YYYY, MM, DD}),
