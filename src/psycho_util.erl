@@ -178,7 +178,7 @@ cookie_max_age(MaxAgeSecs) ->
     UTC = calendar:universal_time(),
     Secs = calendar:datetime_to_gregorian_seconds(UTC),
     ExpireDate = calendar:gregorian_seconds_to_datetime(Secs + MaxAgeSecs),
-    MaxAge = io_lib:format("~d", MaxAgeSecs),
+    MaxAge = io_lib:format("~b", [MaxAgeSecs]),
     Expires = psycho_datetime:rfc1123(ExpireDate),
     {Expires, MaxAge}.
 
