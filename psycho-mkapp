@@ -21,6 +21,14 @@ app_dir() {
     mkdir -p "$app_dir"
 }
 
+platform_sed() {
+    if [ $(uname) = "Darwin" ]; then
+        sed -i '' "s/app_id/$app_id/" "$newname"
+    else
+        sed -i "s/app_id/$app_id/" "$newname"
+    fi
+}
+
 project_skel() {
     cp -a priv/skel/* "$app_dir/"
     for file in `find "$app_dir" -type f`; do
@@ -28,7 +36,7 @@ project_skel() {
 	if [ "$file" != "$newname" ]; then
 	    mv "$file" "$newname"
 	fi
-	sed -i "s/app_id/$app_id/" "$newname"
+    platform_sed
     done
 }
 
