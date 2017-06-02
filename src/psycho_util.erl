@@ -173,7 +173,7 @@ append_cookie_options([Other|_], _Val) ->
 
 
 cookie_max_age(0) ->
-    {"Thu, 01-Jan-1970 00:00:01 GMT", "0"};
+    {"Thu, 01 Jan 1970 00:00:01 GMT", "0"};
 cookie_max_age(MaxAgeSecs) ->
     UTC = calendar:universal_time(),
     Secs = calendar:datetime_to_gregorian_seconds(UTC),
