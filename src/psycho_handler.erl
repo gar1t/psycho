@@ -37,13 +37,14 @@ init([Sock, App]) ->
 init_state(Sock, App) ->
     init_socket(Sock),
     {Http, Close, Error} = psycho_socket:tags(Sock),
+    Env = init_env(psycho_socket:peername(Sock)),
     #state{sock=Sock,
            tag_http=Http,
            tag_close=Close,
            tag_error=Error,
            app=App,
            client_ver=undefined,
-           env=[],
+           env=Env,
            req_headers=[],
            req_content_len=undefined,
            recv_len=0,
@@ -53,6 +54,12 @@ init_state(Sock, App) ->
 
 init_socket(Sock) ->
     ok = psycho_socket:setopts(Sock, [{nodelay, true}]).
+
+init_env({ok, {Ip, Port}}) ->
+    [{peer_ip, Ip},
+     {peer_port, Port}];
+init_env(_) ->
+    [].
 
 %%%===================================================================
 %%% Process messages / HTTP request state handling
@@ -81,15 +88,15 @@ set_socket_active_once(#state{sock=S}) ->
 %%% Request init / pre app dispatch
 %%%===================================================================
 
-set_request(Method, Path, Ver, State) ->
+set_request(Method, Path, Ver, #state{env = Env} = State) ->
     State#state{
-      env=init_env(Method, Path, Ver),
+      env=update_env(Method, Path, Ver, Env),
       client_ver=Ver}.
 
-init_env(Method, Path, Ver) ->
+update_env(Method, Path, Ver, Env) ->
     [{request_method, request_method(Method)},
      {request_path, request_path(Path)},
-     {request_protocol, request_protocol(Ver)}].
+     {request_protocol, request_protocol(Ver)} | Env].
 
 request_method(M) when is_atom(M) -> atom_to_list(M);
 request_method(M) -> M.

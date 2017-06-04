@@ -6,6 +6,7 @@
          accept/2,
          controlling_process/2,
          setopts/2,
+         peername/1,
          send/2,
          recv/2,
          recv/3,
@@ -60,6 +61,12 @@ setopts(#psycho_socket{socket = Sock, type=ssl}, Options) ->
     ssl:setopts(Sock, Options);
 setopts(#psycho_socket{socket = Sock, type=tcp}, Options) ->
     inet:setopts(Sock, Options).
+
+
+peername(#psycho_socket{socket = Sock, type=ssl}) ->
+    ssl:peername(Sock);
+peername(#psycho_socket{socket = Sock, type=tcp}) ->
+    inet:peername(Sock).
 
 
 send(#psycho_socket{socket = Sock, type=ssl}, Data) ->
