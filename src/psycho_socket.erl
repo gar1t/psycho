@@ -137,7 +137,9 @@ ssl_binding_options(Binding, Options) ->
 
 ssl_options(Options) ->
     Filter = fun({Key, _Value}) ->
-                     lists:member(Key, ?SSL_OPTION_KEYS)
+                     lists:member(Key, ?SSL_OPTION_KEYS);
+                (_) ->
+                     false
              end,
     lists:filter(Filter, Options).
 
