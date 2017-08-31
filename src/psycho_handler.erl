@@ -76,6 +76,8 @@ handle_msg({Http, _, {http_header, _, Name, _, Value}}, _From,
 handle_msg({Http, _, http_eoh}, _From, #state{tag_http=Http} = State) ->
     set_socket_raw_passive(State),
     dispatch_to_app(finalize_request(State));
+handle_msg({Http, _, {http_error, Error}}, _From, #state{tag_http=Http}) ->
+    {stop, {http_error, Error}};
 handle_msg({Close, _}, _From, #state{tag_close=Close}) ->
     {stop, normal};
 handle_msg({Error, _, Reason}, _From, #state{tag_error=Error}) ->
